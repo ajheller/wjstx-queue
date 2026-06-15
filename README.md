@@ -43,6 +43,18 @@ Demo mode, with no radio needed:
 python3 wsjtx_queue.py --call AK6IM --demo
 ```
 
+Deploy the current script to the sBitx test host:
+
+```sh
+make deploy-sbitx
+```
+
+Override the target if needed:
+
+```sh
+make deploy-sbitx SBITX_TARGET=pi@192.168.1.42:~
+```
+
 For an older transceiver/interface chain with less high-audio response, such as
 a Kenwood TS-950S path that rolls off around 2.4 kHz:
 
