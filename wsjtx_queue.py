@@ -202,8 +202,15 @@ def parse_packet(data: bytes) -> tuple[int, object | None]:
     return msg_type, decode
 
 
-def configure_rx_df_packet(client_id: str, rx_df: int) -> bytes:
-    """Build a WSJT-X Configure packet that changes only Rx DF."""
+def configure_packet(
+    client_id: str,
+    *,
+    rx_df: int = MAX_U32,
+    dx_call: str = "",
+    dx_grid: str = "",
+    generate_messages: bool = False,
+) -> bytes:
+    """Build a WSJT-X Configure packet, leaving unspecified fields unchanged."""
     return b"".join(
         [
             struct.pack(">III", MAGIC, SCHEMA, TYPE_CONFIGURE),
@@ -214,10 +221,26 @@ def configure_rx_df_packet(client_id: str, rx_df: int) -> bytes:
             qbool(False),
             qu32(MAX_U32),
             qu32(rx_df),
-            qutf8(""),
-            qutf8(""),
-            qbool(False),
+            qutf8(dx_call),
+            qutf8(dx_grid),
+            qbool(generate_messages),
         ]
+    )
+
+
+def configure_rx_df_packet(client_id: str, rx_df: int) -> bytes:
+    """Build a WSJT-X Configure packet that changes only Rx DF."""
+    return configure_packet(client_id, rx_df=rx_df)
+
+
+def configure_dx_packet(client_id: str, station: CqStation) -> bytes:
+    """Build a WSJT-X Configure packet that sets DX fields for a CQ station."""
+    return configure_packet(
+        client_id,
+        rx_df=station.audio_hz,
+        dx_call=station.call,
+        dx_grid=station.grid,
+        generate_messages=True,
     )
 
 
@@ -701,7 +724,7 @@ def render(stdscr: curses.window, state: QueueState, profile: str, view: str, ho
     stdscr.addnstr(
         1,
         0,
-        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  T set Rx DF (--control)  c clear  q quit",
+        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  Enter set DX  T set Rx DF  c clear  q quit",
         width - 1,
         curses.A_DIM,
     )
@@ -789,6 +812,29 @@ def send_suggested_rx_df(sock: socket.socket, state: QueueState, control_enabled
     state.set_control_message(f"sent Rx DF {tx_hz} Hz to {state.client_id} at {state.last_peer[0]}:{state.last_peer[1]}")
 
 
+def send_top_cq_dx(sock: socket.socket, state: QueueState, profile: str, control_enabled: bool) -> None:
+    if not control_enabled:
+        state.set_control_message("control disabled; restart with --control")
+        return
+
+    ranked = state.ranked_cqs(profile)
+    if not ranked:
+        state.set_control_message("control not sent; no CQ/QRZ station available")
+        return
+    if not state.client_id:
+        state.set_control_message("control not sent; no WSJT-X client id yet")
+        return
+    if not state.last_peer:
+        state.set_control_message("control not sent; no WSJT-X peer address yet")
+        return
+
+    station = ranked[0][1]
+    packet = configure_dx_packet(state.client_id, station)
+    sock.sendto(packet, state.last_peer)
+    grid = f" {station.grid}" if station.grid else ""
+    state.set_control_message(f"sent DX {station.call}{grid} at {station.audio_hz} Hz to {state.client_id}")
+
+
 def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
     curses.curs_set(0)
     stdscr.nodelay(True)
@@ -843,6 +889,8 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
                 view = next_view(view)
             elif key in (ord("t"), ord("T")):
                 send_suggested_rx_df(sock, state, args.control)
+            elif key in (curses.KEY_ENTER, 10, 13):
+                send_top_cq_dx(sock, state, profile, args.control)
             elif key in (ord("c"), ord("C")):
                 state.callers.clear()
                 state.cqs.clear()

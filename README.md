@@ -98,6 +98,8 @@ Press these keys while the UI is running:
 - `3`: `field-day` - favors quick/easy contacts: stronger SNR, reasonable
   audio frequency, and low time offset.
 - `v`: cycle between caller queue, CQ/QRZ list, and both lists.
+- `Enter`: when started with `--control`, set WSJT-X `DX Call`, `DX Grid`,
+  `Rx DF`, and `Generate Messages` from the top-ranked CQ/QRZ station.
 - `T`: when started with `--control`, sends a WSJT-X `Configure` packet that
   sets `Rx DF` to the current suggested audio frequency. This does not directly
   set `Tx DF`; use WSJT-X's lock/coupling options if you want Tx to follow Rx.
@@ -126,6 +128,10 @@ The `cqs` view lists stations calling `CQ` or `QRZ`, including common forms
 such as `CQ POTA K7ABC CN87` and `CQ DX JA1ABC PM95`. CQs age out using the
 same `--max-age` setting as callers, and are ranked with the same active
 profile as the caller queue.
+
+With `--control`, pressing `Enter` prepares WSJT-X to answer the top-ranked
+CQ/QRZ station by setting DX call/grid, moving Rx DF to that station's audio
+frequency, and asking WSJT-X to generate messages. It does not enable transmit.
 
 ## TX Frequency Suggestion
 

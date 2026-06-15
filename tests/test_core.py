@@ -72,7 +72,25 @@ class QueueCoreTests(unittest.TestCase):
         self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
         self.assertEqual(2240, reader.u32())
 
+    def test_configure_dx_packet_sets_dx_and_generates_messages(self):
+        station = wsjtx_queue.CqStation("7M2VAP", 0, 0, -17, 0.2, 1200, "CQ POTA 7M2VAP QM05", "QM05")
+        packet = wsjtx_queue.configure_dx_packet("WSJT-X", station)
+        reader = wsjtx_queue.Reader(packet)
+
+        self.assertEqual(wsjtx_queue.MAGIC, reader.u32())
+        self.assertEqual(wsjtx_queue.SCHEMA, reader.u32())
+        self.assertEqual(wsjtx_queue.TYPE_CONFIGURE, reader.u32())
+        self.assertEqual("WSJT-X", reader.utf8())
+        self.assertEqual("", reader.utf8())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual("", reader.utf8())
+        self.assertFalse(reader.bool())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual(1200, reader.u32())
+        self.assertEqual("7M2VAP", reader.utf8())
+        self.assertEqual("QM05", reader.utf8())
+        self.assertTrue(reader.bool())
+
 
 if __name__ == "__main__":
     unittest.main()
-
