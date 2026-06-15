@@ -43,7 +43,7 @@ Demo mode, with no radio needed:
 python3 wsjtx_queue.py --call AK6IM --demo
 ```
 
-Deploy the current script to the sBitx test host:
+Deploy the current queue and UDP hub scripts to the sBitx test host:
 
 ```sh
 make deploy-sbitx

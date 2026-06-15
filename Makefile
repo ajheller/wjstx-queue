@@ -13,4 +13,4 @@ hub-demo:
 	$(PYTHON) wsjtx_udp_hub.py --listen 127.0.0.1:2237 --client gridtracker=127.0.0.1:2238:readonly --client queue=127.0.0.1:2240:control
 
 deploy-sbitx:
-	scp wsjtx_queue.py $(SBITX_TARGET)
+	scp wsjtx_queue.py wsjtx_udp_hub.py $(SBITX_TARGET)
