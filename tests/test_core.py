@@ -33,6 +33,15 @@ class QueueCoreTests(unittest.TestCase):
         state.add_decode(self.decode("AK6IM K1ABC R-10"))
 
         self.assertEqual(0, len(state.callers))
+        self.assertTrue(state.is_worked("K1ABC"))
+        self.assertEqual(["K1ABC"], [worked.call for worked in state.ranked_worked()])
+
+    def test_worked_count_increments_on_duplicate_log(self):
+        state = self.state()
+        state.remove_logged_call("K1ABC")
+        state.remove_logged_call("K1ABC")
+
+        self.assertEqual(2, state.worked["K1ABC"].count)
 
     def test_final_73_removes_call(self):
         state = self.state()

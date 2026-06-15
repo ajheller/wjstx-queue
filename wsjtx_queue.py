@@ -160,6 +160,13 @@ class CompletedCall:
     reason: str
 
 
+@dataclasses.dataclass
+class WorkedStation:
+    call: str
+    worked_at: float
+    count: int = 1
+
+
 def parse_packet(data: bytes) -> tuple[int, object | None]:
     r = Reader(data)
     magic = r.u32()
@@ -435,6 +442,7 @@ class QueueState:
         self.completed_suppress = completed_suppress
         self.callers: dict[str, Caller] = {}
         self.cqs: dict[str, CqStation] = {}
+        self.worked: dict[str, WorkedStation] = {}
         self.recent_decodes: list[RecentDecode] = []
         self.completed: dict[str, CompletedCall] = {}
         self.last_packet = 0.0
@@ -592,6 +600,19 @@ class QueueState:
         self.prune_completed()
         self.completed[call] = CompletedCall(call, time.time(), reason)
 
+    def mark_worked(self, call: str) -> None:
+        call = call.upper()
+        existing = self.worked.get(call)
+        if existing:
+            existing.worked_at = time.time()
+            existing.count += 1
+        else:
+            self.worked[call] = WorkedStation(call, time.time())
+
+    def is_worked(self, call: str) -> bool:
+        keys = {call.upper(), base_call(call)}
+        return any(worked.call in keys or base_call(worked.call) in keys for worked in self.worked.values())
+
     def suggested_tx(self) -> tuple[int | None, int | None, int]:
         self.prune_recent_decodes()
         if self.tx_max_hz < self.tx_min_hz:
@@ -615,6 +636,7 @@ class QueueState:
 
     def remove_logged_call(self, call: str) -> None:
         self.logged_count += 1
+        self.mark_worked(call)
         if self.complete_on in {"log-only", "log-or-73"}:
             self.last_done = call.upper()
             self.last_packet_detail = f"logged {self.last_done}"
@@ -664,6 +686,9 @@ class QueueState:
         rows.sort(key=lambda item: item[0], reverse=True)
         return rows
 
+    def ranked_worked(self) -> list[WorkedStation]:
+        return sorted(self.worked.values(), key=lambda worked: worked.worked_at, reverse=True)
+
 
 def udp_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -674,7 +699,7 @@ def udp_socket(host: str, port: int) -> socket.socket:
 
 
 def next_view(view: str) -> str:
-    views = ["queue", "cqs", "both"]
+    views = ["queue", "cqs", "both", "worked"]
     return views[(views.index(view) + 1) % len(views)]
 
 
@@ -686,12 +711,14 @@ def render_station_row(
     score: float,
     station: Caller | CqStation,
     now: float,
+    worked: bool = False,
     attr: int = curses.A_NORMAL,
 ) -> None:
     age = now - station.last_seen
     dist = "-" if station.distance_km is None else f"{station.distance_km:.0f}"
+    mark = "*" if worked else " "
     line = (
-        f"{idx:>2} {score:>7.1f} {station.call:<12} {station.grid or '-':<6} {dist:>6} "
+        f"{idx:>2}{mark} {score:>7.1f} {station.call:<12} {station.grid or '-':<6} {dist:>6} "
         f"{station.snr:>4} {station.dt_seconds:>5.1f} {station.audio_hz:>5} "
         f"{station.heard_count:>5} {age:>5.0f}  {station.message}"
     )
@@ -724,14 +751,14 @@ def render(stdscr: curses.window, state: QueueState, profile: str, view: str, ho
     stdscr.addnstr(
         1,
         0,
-        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  Enter set DX  T set Rx DF  c clear  q quit",
+        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  Enter set DX  T set Rx DF  c clear  q quit  * worked",
         width - 1,
         curses.A_DIM,
     )
     stdscr.addnstr(
         2,
         0,
-        f"Packets {state.packet_count}  Decodes {state.decode_count}  Ignored {state.ignored_count}  Queued {len(state.callers)}  CQs {len(state.cqs)}",
+        f"Packets {state.packet_count}  Decodes {state.decode_count}  Ignored {state.ignored_count}  Queued {len(state.callers)}  CQs {len(state.cqs)}  Worked {len(state.worked)}",
         width - 1,
         curses.A_DIM,
     )
@@ -760,7 +787,7 @@ def render(stdscr: curses.window, state: QueueState, profile: str, view: str, ho
             if y >= height - 2:
                 break
             attr = curses.A_BOLD if idx == 1 else curses.A_NORMAL
-            render_station_row(stdscr, y, width, idx, score, caller, now, attr)
+            render_station_row(stdscr, y, width, idx, score, caller, now, state.is_worked(caller.call), attr)
             y += 1
         if view == "both" and y < height - 2:
             y += 1
@@ -771,7 +798,20 @@ def render(stdscr: curses.window, state: QueueState, profile: str, view: str, ho
             if y >= height - 2:
                 break
             attr = curses.A_BOLD if idx == 1 and view == "cqs" else curses.A_NORMAL
-            render_station_row(stdscr, y, width, idx, score, cq, now, attr)
+            render_station_row(stdscr, y, width, idx, score, cq, now, state.is_worked(cq.call), attr)
+            y += 1
+
+    if view == "worked" and y < height - 2:
+        stdscr.addnstr(y, 0, "Worked", width - 1, curses.A_BOLD)
+        y += 1
+        stdscr.addnstr(y, 0, f"{'#':>2} {'Call':<12} {'Count':>5} {'Age':>6}", width - 1, curses.A_UNDERLINE)
+        y += 1
+        for idx, worked in enumerate(state.ranked_worked(), start=1):
+            if y >= height - 2:
+                break
+            age = now - worked.worked_at
+            line = f"{idx:>2} {worked.call:<12} {worked.count:>5} {age:>6.0f}"
+            stdscr.addnstr(y, 0, line, width - 1)
             y += 1
 
     if state.last_packet:
@@ -952,7 +992,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1", help="UDP bind host")
     parser.add_argument("--port", type=int, default=2237, help="WSJT-X UDP server port")
     parser.add_argument("--profile", choices=sorted(SCORERS), default="ses")
-    parser.add_argument("--view", choices=("queue", "cqs", "both"), default="queue", help="Initial table view")
+    parser.add_argument("--view", choices=("queue", "cqs", "both", "worked"), default="queue", help="Initial table view")
     parser.add_argument(
         "--complete-on",
         choices=("log-or-73", "log-only", "73-only"),

@@ -88,6 +88,12 @@ Or show both lists:
 python3 wsjtx_queue.py --call AK6IM --view both
 ```
 
+To start on the session worked-stations list:
+
+```sh
+python3 wsjtx_queue.py --call AK6IM --view worked
+```
+
 ## WSJT-X Setup
 
 In WSJT-X, open `Settings -> Reporting`.
@@ -109,7 +115,7 @@ Press these keys while the UI is running:
   depend on distance.
 - `3`: `field-day` - favors quick/easy contacts: stronger SNR, reasonable
   audio frequency, and low time offset.
-- `v`: cycle between caller queue, CQ/QRZ list, and both lists.
+- `v`: cycle between caller queue, CQ/QRZ list, both lists, and worked list.
 - `Enter`: when started with `--control`, set WSJT-X `DX Call`, `DX Grid`,
   `Rx DF`, and `Generate Messages` from the top-ranked CQ/QRZ station.
 - `T`: when started with `--control`, sends a WSJT-X `Configure` packet that
@@ -144,6 +150,13 @@ profile as the caller queue.
 With `--control`, pressing `Enter` prepares WSJT-X to answer the top-ranked
 CQ/QRZ station by setting DX call/grid, moving Rx DF to that station's audio
 frequency, and asking WSJT-X to generate messages. It does not enable transmit.
+
+## Worked Tracking
+
+Logged QSOs are added to a session worked list. Queue and CQ rows marked with
+`*` are calls already worked this session. The `worked` view shows worked calls,
+duplicate log count, and age since last log. Pressing `c` clears active queue/CQ
+state but leaves worked history intact.
 
 ## TX Frequency Suggestion
 
