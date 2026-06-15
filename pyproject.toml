@@ -1,0 +1,19 @@
+[project]
+name = "wsjtx-queue"
+version = "0.1.0"
+description = "Terminal queue manager for WSJT-X pileups, CQs, and digital-mode operating."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+  { name = "AK6IM" }
+]
+dependencies = []
+
+[project.scripts]
+wsjtx-queue = "wsjtx_queue:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
