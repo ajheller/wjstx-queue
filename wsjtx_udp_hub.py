@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """Small WSJT-X UDP hub.
 
 Routes WSJT-X UDP packets to multiple local tools and optionally forwards
 control packets from approved tools back to WSJT-X.
+
+Aaron Heller <AK6IM@ARRL.net>
+14 June 2026
 """
 
 from __future__ import annotations

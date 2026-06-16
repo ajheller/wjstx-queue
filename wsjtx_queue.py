@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-only
 """WSJT-X caller queue for SES and contest pileup handling.
 
 Listens to WSJT-X-compatible UDP packets and ranks stations that appear to be
 calling your callsign. This intentionally does not transmit or control WSJT-X.
+
+Aaron Heller <AK6IM@ARRL.net>
+10 April 2026
 """
 
 from __future__ import annotations
