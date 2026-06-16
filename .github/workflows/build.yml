@@ -17,19 +17,40 @@ jobs:
       - run: black --check wsjtx_queue.py wsjtx_udp_hub.py tests
       - run: python -m unittest discover -s tests
 
-  windows-exe:
-    runs-on: windows-latest
+  standalone:
+    name: standalone-${{ matrix.platform }}
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            queue_path: dist/wsjtx-queue.exe
+            hub_path: dist/wsjtx-udp-hub.exe
+          - platform: macos
+            os: macos-latest
+            queue_path: dist/wsjtx-queue
+            hub_path: dist/wsjtx-udp-hub
+          - platform: linux
+            os: ubuntu-latest
+            queue_path: dist/wsjtx-queue
+            hub_path: dist/wsjtx-udp-hub
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-build.txt
-      - run: pyinstaller --onefile --name wsjtx-queue wsjtx_queue.py
-      - run: pyinstaller --onefile --name wsjtx-udp-hub wsjtx_udp_hub.py
+      - run: python -m PyInstaller --onefile --name wsjtx-queue wsjtx_queue.py
+      - run: python -m PyInstaller --onefile --name wsjtx-udp-hub wsjtx_udp_hub.py
       - uses: actions/upload-artifact@v4
         with:
-          name: wsjtx-queue-windows
+          name: wsjtx-queue-${{ matrix.platform }}
           path: |
-            dist/wsjtx-queue.exe
-            dist/wsjtx-udp-hub.exe
+            ${{ matrix.queue_path }}
+            ${{ matrix.hub_path }}
+            README.md
+            LICENSE
+            docs/

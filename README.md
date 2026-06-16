@@ -43,6 +43,10 @@ Demo mode, with no radio needed:
 python3 wsjtx_queue.py --call AK6IM --demo
 ```
 
+GitHub Actions builds standalone Windows, macOS, and Linux artifacts for
+`wsjtx_queue.py` and `wsjtx_udp_hub.py` on each push, pull request, and manual
+workflow run.
+
 Deploy the current queue and UDP hub scripts to the sBitx test host:
 
 ```sh
