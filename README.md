@@ -138,6 +138,8 @@ python3 wsjtx_queue.py --call AK6IM --port 2240 --control
 Configure WSJT-X UDP to send to `127.0.0.1:2237`. Configure GridTracker to
 listen on `127.0.0.1:2238`. The queue listens on `127.0.0.1:2240`.
 
+For protocol details, see [WSJT-X UDP Protocol Notes](docs/wsjtx-udp-protocol.md).
+
 ## Profiles
 
 Press these keys while the UI is running:
