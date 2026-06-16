@@ -215,3 +215,9 @@ the last `120` seconds. Useful options:
 - Distance scoring needs your grid and a caller grid in the decoded message.
 - The parser currently uses WSJT-X decode, clear, Logged ADIF, and QSO Logged
   UDP packets.
+
+## License
+
+This project is licensed under the GNU General Public License version 3. If
+the GPL is an impediment to your use of this code, please contact AK6IM to
+discuss alternate licensing.
