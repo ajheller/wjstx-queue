@@ -43,7 +43,8 @@ PACKET_NAMES = {
 }
 
 CALL_RE = re.compile(
-    r"^(?:(?:[A-Z0-9]{1,3}/)?[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}(?:/[A-Z0-9]{1,4})?|[A-Z0-9]{1,4}/[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4})$"
+    r"^(?:(?:[A-Z0-9]{1,3}/)?[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4}"
+    r"(?:/[A-Z0-9]{1,4})?|[A-Z0-9]{1,4}/[A-Z0-9]{1,3}[0-9][A-Z0-9]{1,4})$"
 )
 GRID_RE = re.compile(r"^[A-R]{2}[0-9]{2}(?:[A-X]{2})?$")
 ADIF_CALL_RE = re.compile(r"<CALL:(\d+)[^>]*>([^<\s]+)", re.IGNORECASE)
@@ -389,10 +390,7 @@ def distance_km(a_grid: str, b_grid: str) -> float | None:
     lat2, lon2 = map(math.radians, b)
     dlat = lat2 - lat1
     dlon = lon2 - lon1
-    hav = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
-    )
+    hav = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
     return 6371.0 * 2 * math.atan2(math.sqrt(hav), math.sqrt(1 - hav))
 
 
@@ -581,32 +579,23 @@ class QueueState:
     def add_recent_decode(self, decode: Decode) -> None:
         if decode.low_confidence or decode.off_air or decode.audio_hz <= 0:
             return
-        self.recent_decodes.append(
-            RecentDecode(decode.audio_hz, decode.snr, time.time())
-        )
+        self.recent_decodes.append(RecentDecode(decode.audio_hz, decode.snr, time.time()))
         self.prune_recent_decodes()
 
     def prune_recent_decodes(self) -> None:
         now = time.time()
-        self.recent_decodes = [
-            d for d in self.recent_decodes if now - d.last_seen <= self.tx_window
-        ]
+        self.recent_decodes = [d for d in self.recent_decodes if now - d.last_seen <= self.tx_window]
 
     def prune_completed(self) -> None:
         now = time.time()
         self.completed = {
-            call: done
-            for call, done in self.completed.items()
-            if now - done.completed_at <= self.completed_suppress
+            call: done for call, done in self.completed.items() if now - done.completed_at <= self.completed_suppress
         }
 
     def is_suppressed(self, call: str) -> bool:
         self.prune_completed()
         keys = {call.upper(), base_call(call)}
-        return any(
-            done.call in keys or base_call(done.call) in keys
-            for done in self.completed.values()
-        )
+        return any(done.call in keys or base_call(done.call) in keys for done in self.completed.values())
 
     def mark_completed(self, call: str, reason: str) -> None:
         call = call.upper()
@@ -624,21 +613,14 @@ class QueueState:
 
     def is_worked(self, call: str) -> bool:
         keys = {call.upper(), base_call(call)}
-        return any(
-            worked.call in keys or base_call(worked.call) in keys
-            for worked in self.worked.values()
-        )
+        return any(worked.call in keys or base_call(worked.call) in keys for worked in self.worked.values())
 
     def suggested_tx(self) -> tuple[int | None, int | None, int]:
         self.prune_recent_decodes()
         if self.tx_max_hz < self.tx_min_hz:
             return None, None, len(self.recent_decodes)
 
-        occupied = [
-            d.audio_hz
-            for d in self.recent_decodes
-            if self.tx_min_hz <= d.audio_hz <= self.tx_max_hz
-        ]
+        occupied = [d.audio_hz for d in self.recent_decodes if self.tx_min_hz <= d.audio_hz <= self.tx_max_hz]
         if not occupied:
             return (self.tx_min_hz + self.tx_max_hz) // 2, None, 0
 
@@ -663,9 +645,7 @@ class QueueState:
             self.mark_completed(self.last_done, "logged")
             self.remove_call(self.last_done)
         else:
-            self.last_packet_detail = (
-                f"logged {call.upper()} ignored by --complete-on {self.complete_on}"
-            )
+            self.last_packet_detail = f"logged {call.upper()} ignored by --complete-on {self.complete_on}"
 
     def remove_completed_call(self, call: str, message: str) -> None:
         self.last_done = call.upper()
@@ -685,14 +665,10 @@ class QueueState:
 
     def clear_stale(self) -> None:
         now = time.time()
-        stale = [
-            call for call, c in self.callers.items() if now - c.last_seen > self.max_age
-        ]
+        stale = [call for call, c in self.callers.items() if now - c.last_seen > self.max_age]
         for call in stale:
             del self.callers[call]
-        stale_cqs = [
-            call for call, c in self.cqs.items() if now - c.last_seen > self.max_age
-        ]
+        stale_cqs = [call for call, c in self.cqs.items() if now - c.last_seen > self.max_age]
         for call in stale_cqs:
             del self.cqs[call]
 
@@ -713,9 +689,7 @@ class QueueState:
         return rows
 
     def ranked_worked(self) -> list[WorkedStation]:
-        return sorted(
-            self.worked.values(), key=lambda worked: worked.worked_at, reverse=True
-        )
+        return sorted(self.worked.values(), key=lambda worked: worked.worked_at, reverse=True)
 
 
 def udp_socket(host: str, port: int) -> socket.socket:
@@ -759,7 +733,8 @@ def render_table_header(stdscr: curses.window, y: int, width: int, label: str) -
     stdscr.addnstr(
         y,
         0,
-        f"{'#':>2} {'Score':>7} {'Call':<12} {'Grid':<6} {'km':>6} {'SNR':>4} {'DT':>5} {'Hz':>5} {'Heard':>5} {'Age':>5}  Message",
+        f"{'#':>2} {'Score':>7} {'Call':<12} {'Grid':<6} {'km':>6} "
+        f"{'SNR':>4} {'DT':>5} {'Hz':>5} {'Heard':>5} {'Age':>5}  Message",
         width - 1,
         curses.A_UNDERLINE,
     )
@@ -793,7 +768,8 @@ def render(
     stdscr.addnstr(
         2,
         0,
-        f"Packets {state.packet_count}  Decodes {state.decode_count}  Ignored {state.ignored_count}  Queued {len(state.callers)}  CQs {len(state.cqs)}  Worked {len(state.worked)}",
+        f"Packets {state.packet_count}  Decodes {state.decode_count}  Ignored {state.ignored_count}  "
+        f"Queued {len(state.callers)}  CQs {len(state.cqs)}  Worked {len(state.worked)}",
         width - 1,
         curses.A_DIM,
     )
@@ -849,9 +825,7 @@ def render(
             if y >= height - 2:
                 break
             attr = curses.A_BOLD if idx == 1 and view == "cqs" else curses.A_NORMAL
-            render_station_row(
-                stdscr, y, width, idx, score, cq, now, state.is_worked(cq.call), attr
-            )
+            render_station_row(stdscr, y, width, idx, score, cq, now, state.is_worked(cq.call), attr)
             y += 1
 
     if view == "worked" and y < height - 2:
@@ -877,10 +851,7 @@ def render(
         packet_age = f"{now - state.last_packet:4.1f}s ago"
     else:
         packet_age = "never"
-    footer = (
-        f"WSJT-X last packet: {state.last_packet_name} {packet_age}"
-        f" | {state.last_packet_detail or '-'}"
-    )
+    footer = f"WSJT-X last packet: {state.last_packet_name} {packet_age}" f" | {state.last_packet_detail or '-'}"
     if state.last_error:
         footer += f" | error: {state.last_error}"
     control_message = state.current_control_message()
@@ -890,9 +861,7 @@ def render(
     stdscr.refresh()
 
 
-def send_suggested_rx_df(
-    sock: socket.socket, state: QueueState, control_enabled: bool
-) -> None:
+def send_suggested_rx_df(sock: socket.socket, state: QueueState, control_enabled: bool) -> None:
     if not control_enabled:
         state.set_control_message("control disabled; restart with --control")
         return
@@ -915,9 +884,7 @@ def send_suggested_rx_df(
     )
 
 
-def send_top_cq_dx(
-    sock: socket.socket, state: QueueState, profile: str, control_enabled: bool
-) -> None:
+def send_top_cq_dx(sock: socket.socket, state: QueueState, profile: str, control_enabled: bool) -> None:
     if not control_enabled:
         state.set_control_message("control disabled; restart with --control")
         return
@@ -937,9 +904,7 @@ def send_top_cq_dx(
     packet = configure_dx_packet(state.client_id, station)
     sock.sendto(packet, state.last_peer)
     grid = f" {station.grid}" if station.grid else ""
-    state.set_control_message(
-        f"sent DX {station.call}{grid} at {station.audio_hz} Hz to {state.client_id}"
-    )
+    state.set_control_message(f"sent DX {station.call}{grid} at {station.audio_hz} Hz to {state.client_id}")
 
 
 def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
@@ -975,9 +940,7 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
                     state.note_packet(msg_type)
                     if msg_type == TYPE_DECODE and isinstance(payload, Decode):
                         state.add_decode(payload)
-                    elif msg_type in (TYPE_LOGGED_ADIF, TYPE_QSO_LOGGED) and isinstance(
-                        payload, LoggedCall
-                    ):
+                    elif msg_type in (TYPE_LOGGED_ADIF, TYPE_QSO_LOGGED) and isinstance(payload, LoggedCall):
                         state.remove_logged_call(payload.call)
                     elif msg_type == TYPE_CLEAR:
                         state.callers.clear()
@@ -1051,31 +1014,21 @@ def run_demo(args: argparse.Namespace) -> None:
         state.add_decode(decode)
     tx_hz, clearance, occupied_count = state.suggested_tx()
     clear_text = "open band" if clearance is None else f"nearest decode {clearance} Hz"
-    print(
-        f"TX suggestion: {tx_hz} Hz ({clear_text}, {occupied_count} decodes in passband)"
-    )
+    print(f"TX suggestion: {tx_hz} Hz ({clear_text}, {occupied_count} decodes in passband)")
     for profile in SCORERS:
         print(f"\n{profile}")
         for score, caller in state.ranked(profile):
             dist = "-" if caller.distance_km is None else f"{caller.distance_km:.0f} km"
-            print(
-                f"{score:6.1f} {caller.call:8} {caller.grid:6} {dist:>8} {caller.snr:>4} dB  {caller.message}"
-            )
+            print(f"{score:6.1f} {caller.call:8} {caller.grid:6} {dist:>8} {caller.snr:>4} dB  {caller.message}")
     print("\ncqs")
     for score, cq in state.ranked_cqs(args.profile):
         dist = "-" if cq.distance_km is None else f"{cq.distance_km:.0f} km"
-        print(
-            f"{score:6.1f} {cq.call:8} {cq.grid:6} {dist:>8} {cq.snr:>4} dB  {cq.message}"
-        )
+        print(f"{score:6.1f} {cq.call:8} {cq.grid:6} {dist:>8} {cq.snr:>4} dB  {cq.message}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Rank stations calling you from WSJT-X UDP decodes."
-    )
-    parser.add_argument(
-        "--call", required=True, help="Your callsign, e.g. AK6IM or K6C"
-    )
+    parser = argparse.ArgumentParser(description="Rank stations calling you from WSJT-X UDP decodes.")
+    parser.add_argument("--call", required=True, help="Your callsign, e.g. AK6IM or K6C")
     parser.add_argument(
         "--grid",
         default="CM87um",
@@ -1102,24 +1055,16 @@ def main() -> None:
         default=600,
         help="Seconds to suppress re-adding calls after they complete",
     )
-    parser.add_argument(
-        "--max-age", type=int, default=180, help="Drop callers after this many seconds"
-    )
-    parser.add_argument(
-        "--tx-min", type=int, default=300, help="Lowest TX audio frequency to suggest"
-    )
+    parser.add_argument("--max-age", type=int, default=180, help="Drop callers after this many seconds")
+    parser.add_argument("--tx-min", type=int, default=300, help="Lowest TX audio frequency to suggest")
     parser.add_argument(
         "--tx-max",
         type=int,
         default=2600,
         help="Highest TX audio frequency to suggest; use 2400 for older rigs",
     )
-    parser.add_argument(
-        "--tx-step", type=int, default=10, help="TX suggestion frequency step"
-    )
-    parser.add_argument(
-        "--tx-guard", type=int, default=80, help="Desired spacing from nearby decodes"
-    )
+    parser.add_argument("--tx-step", type=int, default=10, help="TX suggestion frequency step")
+    parser.add_argument("--tx-guard", type=int, default=80, help="Desired spacing from nearby decodes")
     parser.add_argument(
         "--tx-window",
         type=int,
@@ -1132,12 +1077,8 @@ def main() -> None:
         action="store_true",
         help="Enable WSJT-X UDP control hotkeys, including T to set Rx DF",
     )
-    parser.add_argument(
-        "--refresh", type=float, default=0.25, help="UI refresh interval"
-    )
-    parser.add_argument(
-        "--demo", action="store_true", help="Print demo rankings and exit"
-    )
+    parser.add_argument("--refresh", type=float, default=0.25, help="UI refresh interval")
+    parser.add_argument("--demo", action="store_true", help="Print demo rankings and exit")
     args = parser.parse_args()
 
     if args.demo:
