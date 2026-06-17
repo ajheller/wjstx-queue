@@ -446,6 +446,8 @@ class QueueState:
         self.completed_suppress = completed_suppress
         self.callers: dict[str, Caller] = {}
         self.cqs: dict[str, CqStation] = {}
+        self.selected_cq_call = ""
+        self.selected_cq_index = 0
         self.worked: dict[str, WorkedStation] = {}
         self.recent_decodes: list[RecentDecode] = []
         self.completed: dict[str, CompletedCall] = {}
@@ -688,6 +690,38 @@ class QueueState:
         rows.sort(key=lambda item: item[0], reverse=True)
         return rows
 
+    def sync_cq_selection(self, rows: list[tuple[float, CqStation]]) -> int | None:
+        if not rows:
+            self.selected_cq_call = ""
+            self.selected_cq_index = 0
+            return None
+
+        if self.selected_cq_call:
+            for idx, (_, cq) in enumerate(rows):
+                if cq.call == self.selected_cq_call:
+                    self.selected_cq_index = idx
+                    return idx
+
+        self.selected_cq_index = max(0, min(self.selected_cq_index, len(rows) - 1))
+        self.selected_cq_call = rows[self.selected_cq_index][1].call
+        return self.selected_cq_index
+
+    def move_cq_selection(self, profile: str, delta: int) -> None:
+        rows = self.ranked_cqs(profile)
+        selected = self.sync_cq_selection(rows)
+        if selected is None:
+            return
+
+        self.selected_cq_index = max(0, min(selected + delta, len(rows) - 1))
+        self.selected_cq_call = rows[self.selected_cq_index][1].call
+
+    def selected_cq(self, profile: str) -> CqStation | None:
+        rows = self.ranked_cqs(profile)
+        selected = self.sync_cq_selection(rows)
+        if selected is None:
+            return None
+        return rows[selected][1]
+
     def ranked_worked(self) -> list[WorkedStation]:
         return sorted(self.worked.values(), key=lambda worked: worked.worked_at, reverse=True)
 
@@ -761,7 +795,8 @@ def render(
     stdscr.addnstr(
         1,
         0,
-        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  Enter set DX  T set Rx DF  c clear  q quit  * worked",
+        "Keys: 1 SES  2 ARRL Digital  3 Field Day  v view  Up/Down select CQ  "
+        "Enter set DX  T set Rx DF  c clear  q quit  * worked",
         width - 1,
         curses.A_DIM,
     )
@@ -821,10 +856,12 @@ def render(
 
     if view in {"cqs", "both"} and y < height - 2:
         y = render_table_header(stdscr, y, width, "CQs / QRZs")
-        for idx, (score, cq) in enumerate(state.ranked_cqs(profile), start=1):
+        cqs = state.ranked_cqs(profile)
+        selected_cq_index = state.sync_cq_selection(cqs)
+        for idx, (score, cq) in enumerate(cqs, start=1):
             if y >= height - 2:
                 break
-            attr = curses.A_BOLD if idx == 1 and view == "cqs" else curses.A_NORMAL
+            attr = curses.A_REVERSE | curses.A_BOLD if idx - 1 == selected_cq_index else curses.A_NORMAL
             render_station_row(stdscr, y, width, idx, score, cq, now, state.is_worked(cq.call), attr)
             y += 1
 
@@ -900,7 +937,11 @@ def send_top_cq_dx(sock: socket.socket, state: QueueState, profile: str, control
         state.set_control_message("control not sent; no WSJT-X peer address yet")
         return
 
-    station = ranked[0][1]
+    station = state.selected_cq(profile)
+    if station is None:
+        state.set_control_message("control not sent; no CQ/QRZ station available")
+        return
+
     packet = configure_dx_packet(state.client_id, station)
     sock.sendto(packet, state.last_peer)
     grid = f" {station.grid}" if station.grid else ""
@@ -959,6 +1000,10 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
                 profile = "field-day"
             elif key in (ord("v"), ord("V")):
                 view = next_view(view)
+            elif key == curses.KEY_UP and view in {"cqs", "both"}:
+                state.move_cq_selection(profile, -1)
+            elif key == curses.KEY_DOWN and view in {"cqs", "both"}:
+                state.move_cq_selection(profile, 1)
             elif key in (ord("t"), ord("T")):
                 send_suggested_rx_df(sock, state, args.control)
             elif key in (curses.KEY_ENTER, 10, 13):

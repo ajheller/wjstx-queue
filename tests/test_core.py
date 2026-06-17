@@ -10,6 +10,14 @@ sys.modules["wsjtx_queue"] = wsjtx_queue
 SPEC.loader.exec_module(wsjtx_queue)
 
 
+class FakeSocket:
+    def __init__(self):
+        self.sent = []
+
+    def sendto(self, data, address):
+        self.sent.append((data, address))
+
+
 class QueueCoreTests(unittest.TestCase):
     def decode(self, message, snr=-10, audio_hz=1000):
         return wsjtx_queue.Decode("WSJT-X", True, 0, snr, 0.2, audio_hz, "FT8", message)
@@ -64,6 +72,68 @@ class QueueCoreTests(unittest.TestCase):
 
         ranked = [cq.call for _, cq in state.ranked_cqs("arrl-digital")]
         self.assertEqual("7M2VAP", ranked[0])
+
+    def test_cq_selection_defaults_to_top_ranked_station(self):
+        state = self.state()
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))
+        state.add_decode(self.decode("CQ POTA 7M2VAP QM05", snr=-17, audio_hz=1200))
+
+        selected = state.selected_cq("arrl-digital")
+
+        self.assertIsNotNone(selected)
+        self.assertEqual("7M2VAP", selected.call)
+
+    def test_cq_selection_moves_and_clamps(self):
+        state = self.state()
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))
+        state.add_decode(self.decode("CQ POTA 7M2VAP QM05", snr=-17, audio_hz=1200))
+
+        state.move_cq_selection("arrl-digital", 1)
+        self.assertEqual("K7ZZZ", state.selected_cq("arrl-digital").call)
+
+        state.move_cq_selection("arrl-digital", 99)
+        self.assertEqual("K7ZZZ", state.selected_cq("arrl-digital").call)
+
+        state.move_cq_selection("arrl-digital", -99)
+        self.assertEqual("7M2VAP", state.selected_cq("arrl-digital").call)
+
+    def test_cq_selection_follows_call_when_rank_changes(self):
+        state = self.state()
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))
+        state.add_decode(self.decode("CQ POTA 7M2VAP QM05", snr=-17, audio_hz=1200))
+        state.move_cq_selection("arrl-digital", 1)
+        self.assertEqual("K7ZZZ", state.selected_cq("arrl-digital").call)
+
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=30, audio_hz=900))
+
+        self.assertEqual("K7ZZZ", state.selected_cq("field-day").call)
+
+    def test_send_cq_dx_uses_selected_station(self):
+        state = self.state()
+        state.client_id = "WSJT-X"
+        state.last_peer = ("127.0.0.1", 45185)
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))
+        state.add_decode(self.decode("CQ POTA 7M2VAP QM05", snr=-17, audio_hz=1200))
+        state.move_cq_selection("arrl-digital", 1)
+        sock = FakeSocket()
+
+        wsjtx_queue.send_top_cq_dx(sock, state, "arrl-digital", True)
+
+        self.assertEqual(("127.0.0.1", 45185), sock.sent[0][1])
+        reader = wsjtx_queue.Reader(sock.sent[0][0])
+        self.assertEqual(wsjtx_queue.MAGIC, reader.u32())
+        self.assertEqual(wsjtx_queue.SCHEMA, reader.u32())
+        self.assertEqual(wsjtx_queue.TYPE_CONFIGURE, reader.u32())
+        self.assertEqual("WSJT-X", reader.utf8())
+        self.assertEqual("", reader.utf8())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual("", reader.utf8())
+        self.assertFalse(reader.bool())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual(900, reader.u32())
+        self.assertEqual("K7ZZZ", reader.utf8())
+        self.assertEqual("CN87", reader.utf8())
+        self.assertTrue(reader.bool())
 
     def test_configure_packet_sets_only_rx_df(self):
         packet = wsjtx_queue.configure_rx_df_packet("WSJT-X", 2240)
