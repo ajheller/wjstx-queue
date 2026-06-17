@@ -121,6 +121,27 @@ In WSJT-X, open `Settings -> Reporting`.
   port `2237`, use WSJT-X's secondary UDP forwarding or put this tool on a
   forwarded/multicast feed.
 
+## Quick Start With GridTracker Forwarding
+
+If you already use GridTracker and have its UDP forwarding enabled, the simplest
+setup is:
+
+```text
+WSJT-X -> GridTracker -> wsjtx_queue.py
+```
+
+For example, if GridTracker forwards WSJT-X UDP packets to `127.0.0.1:2238`,
+run the queue as a listen-only client on that port:
+
+```sh
+python3 wsjtx_queue.py --call AK6IM --port 2238
+```
+
+Do not add `--control` for the normal GridTracker-forwarding setup. Some
+GridTracker configurations may pass control packets back to WSJT-X, but treat
+that as an advanced choice. For club use, keeping the queue passive is less
+surprising and leaves GridTracker as the control-capable app.
+
 ## UDP Hub
 
 `wsjtx_udp_hub.py` is a small companion router for running multiple WSJT-X UDP
