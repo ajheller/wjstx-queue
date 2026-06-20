@@ -65,6 +65,25 @@ download the archive for your platform:
 
 Each release archive also includes `README.md`, `LICENSE`, and `docs/`.
 
+### macOS First Run
+
+The macOS release is not Apple-notarized. The first time you run it, macOS may
+say Apple could not verify that `wsjtx-queue` is free of malware.
+
+You can allow it from `System Settings -> Privacy & Security` after the first
+blocked launch, or remove the download quarantine flag from the extracted
+folder:
+
+```sh
+xattr -dr com.apple.quarantine ~/Downloads/wsjtx-queue-vX.Y.Z-macos
+```
+
+Then run it from Terminal:
+
+```sh
+./wsjtx-queue --call AK6IM
+```
+
 To download the standalone builds from GitHub, open the repository's
 `Actions` tab, choose the latest successful `build` workflow run, and download
 the artifact for your platform from the `Artifacts` section:
