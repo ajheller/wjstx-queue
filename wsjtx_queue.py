@@ -726,12 +726,46 @@ class QueueState:
         return sorted(self.worked.values(), key=lambda worked: worked.worked_at, reverse=True)
 
 
+def parse_udp_port(text: str) -> int:
+    try:
+        port = int(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"invalid UDP port {text!r}") from exc
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError(f"UDP port out of range: {port}")
+    return port
+
+
+def parse_port_list(text: str) -> list[int]:
+    ports = []
+    for raw_port in text.split(","):
+        raw_port = raw_port.strip()
+        if not raw_port:
+            continue
+        ports.append(parse_udp_port(raw_port))
+
+    if not ports:
+        raise argparse.ArgumentTypeError("at least one UDP port is required")
+    return ports
+
+
 def udp_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((host, port))
     sock.setblocking(False)
     return sock
+
+
+def udp_socket_from_ports(host: str, ports: Iterable[int]) -> tuple[socket.socket, int]:
+    failures = []
+    for port in ports:
+        try:
+            sock = udp_socket(host, port)
+            return sock, sock.getsockname()[1]
+        except OSError as exc:
+            failures.append(f"{port}: {exc.strerror or exc}")
+
+    raise OSError(f"could not bind UDP listener on {host}; tried {', '.join(failures)}")
 
 
 def next_view(view: str) -> str:
@@ -964,7 +998,8 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
         args.completed_suppress,
     )
     state.set_control_enabled(args.control)
-    sock = udp_socket(args.host, args.port)
+    ports = [args.port] if args.port is not None else args.ports
+    sock, bound_port = udp_socket_from_ports(args.host, ports)
     profile = args.profile
     view = args.view
 
@@ -1012,7 +1047,7 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
                 state.callers.clear()
                 state.cqs.clear()
 
-            render(stdscr, state, profile, view, args.host, args.port)
+            render(stdscr, state, profile, view, args.host, bound_port)
             time.sleep(args.refresh)
         finally:
             pass
@@ -1080,7 +1115,13 @@ def main() -> None:
         help="Your Maidenhead grid, used for distance scoring",
     )
     parser.add_argument("--host", default="127.0.0.1", help="UDP bind host")
-    parser.add_argument("--port", type=int, default=2237, help="WSJT-X UDP server port")
+    parser.add_argument("--port", type=parse_udp_port, help="Single UDP port to bind; overrides --ports")
+    parser.add_argument(
+        "--ports",
+        type=parse_port_list,
+        default=parse_port_list("2237,2238"),
+        help="Comma-separated UDP ports to try when --port is not set; default 2237,2238",
+    )
     parser.add_argument("--profile", choices=sorted(SCORERS), default="ses")
     parser.add_argument(
         "--view",

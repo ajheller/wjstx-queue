@@ -1,7 +1,9 @@
+import argparse
 import importlib.util
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("wsjtx_queue", ROOT / "wsjtx_queue.py")
@@ -16,6 +18,9 @@ class FakeSocket:
 
     def sendto(self, data, address):
         self.sent.append((data, address))
+
+    def getsockname(self):
+        return ("127.0.0.1", 2238)
 
 
 class QueueCoreTests(unittest.TestCase):
@@ -72,6 +77,27 @@ class QueueCoreTests(unittest.TestCase):
 
         ranked = [cq.call for _, cq in state.ranked_cqs("arrl-digital")]
         self.assertEqual("7M2VAP", ranked[0])
+
+    def test_parse_port_list(self):
+        self.assertEqual(2237, wsjtx_queue.parse_udp_port("2237"))
+        self.assertEqual([2237, 2238], wsjtx_queue.parse_port_list("2237, 2238"))
+
+        with self.assertRaises(argparse.ArgumentTypeError):
+            wsjtx_queue.parse_udp_port("99999")
+        with self.assertRaises(argparse.ArgumentTypeError):
+            wsjtx_queue.parse_port_list("2237, nope")
+
+    def test_udp_socket_from_ports_falls_back_when_first_port_is_busy(self):
+        def fake_udp_socket(host, port):
+            if port == 2237:
+                raise OSError("address already in use")
+            return FakeSocket()
+
+        with mock.patch.object(wsjtx_queue, "udp_socket", side_effect=fake_udp_socket):
+            sock, bound_port = wsjtx_queue.udp_socket_from_ports("127.0.0.1", [2237, 2238])
+
+        self.assertIsInstance(sock, FakeSocket)
+        self.assertEqual(2238, bound_port)
 
     def test_cq_selection_defaults_to_top_ranked_station(self):
         state = self.state()

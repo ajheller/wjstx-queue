@@ -31,6 +31,10 @@ WSJT-X as `Rx DF`. Straight WSJT-X/WSJT-X Improved UDP does not provide a direct
 python3 wsjtx_queue.py --call AK6IM
 ```
 
+By default the queue tries to bind UDP port `2237` first, then `2238`. This
+covers the common cases where WSJT-X sends directly to the queue, or GridTracker
+is already using `2237` and forwarding packets to `2238`.
+
 For a special event callsign:
 
 ```sh
@@ -116,10 +120,22 @@ In WSJT-X, open `Settings -> Reporting`.
 
 - Enable UDP server.
 - Use server `127.0.0.1`.
-- Use port `2237`, or pass the same port with `--port`.
+- Use port `2237`.
 - Keep GridTracker pointed at WSJT-X as usual. If another app already binds
   port `2237`, use WSJT-X's secondary UDP forwarding or put this tool on a
   forwarded/multicast feed.
+
+If you need to pin a single queue port, use `--port`:
+
+```sh
+python3 wsjtx_queue.py --call AK6IM --port 2240
+```
+
+If you want a different fallback list, use `--ports`:
+
+```sh
+python3 wsjtx_queue.py --call AK6IM --ports 2237,2238,2240
+```
 
 ## Quick Start With GridTracker Forwarding
 
@@ -131,10 +147,11 @@ WSJT-X -> GridTracker -> wsjtx_queue.py
 ```
 
 For example, if GridTracker forwards WSJT-X UDP packets to `127.0.0.1:2238`,
-run the queue as a listen-only client on that port:
+you can usually run the queue without a port option; it will try `2237` first
+and fall back to `2238` if `2237` is already in use:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --port 2238
+python3 wsjtx_queue.py --call AK6IM
 ```
 
 Do not add `--control` for the normal GridTracker-forwarding setup. Some
