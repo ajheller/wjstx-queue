@@ -49,7 +49,21 @@ python3 wsjtx_queue.py --call AK6IM --demo
 
 GitHub Actions builds standalone Windows, macOS, and Linux artifacts for
 `wsjtx_queue.py` and `wsjtx_udp_hub.py` on each push, pull request, and manual
-workflow run.
+workflow run. Version tags such as `v0.1.0` also publish a GitHub Release with
+ready-to-download archives.
+
+For normal installs, open the repository's
+[latest release](https://github.com/ajheller/wjstx-queue/releases/latest) and
+download the archive for your platform:
+
+- `wsjtx-queue-vX.Y.Z-windows.zip`: contains `wsjtx-queue.exe` and
+  `wsjtx-udp-hub.exe`.
+- `wsjtx-queue-vX.Y.Z-macos.tar.gz`: contains `wsjtx-queue` and
+  `wsjtx-udp-hub`.
+- `wsjtx-queue-vX.Y.Z-linux.tar.gz`: contains `wsjtx-queue` and
+  `wsjtx-udp-hub`.
+
+Each release archive also includes `README.md`, `LICENSE`, and `docs/`.
 
 To download the standalone builds from GitHub, open the repository's
 `Actions` tab, choose the latest successful `build` workflow run, and download
@@ -59,9 +73,10 @@ the artifact for your platform from the `Artifacts` section:
 - `wsjtx-queue-macos`: contains `wsjtx-queue` and `wsjtx-udp-hub`.
 - `wsjtx-queue-linux`: contains `wsjtx-queue` and `wsjtx-udp-hub`.
 
-Each artifact also includes `README.md`, `LICENSE`, and `docs/`. If you build
-locally with PyInstaller instead of GitHub Actions, the standalone files are
-written under `dist/`.
+Each artifact also includes `README.md`, `LICENSE`, and `docs/`. Actions
+artifacts are best for testing unreleased builds. If you build locally with
+PyInstaller instead of GitHub Actions, the standalone files are written under
+`dist/`.
 
 Deploy the current queue and UDP hub scripts to the sBitx test host:
 
