@@ -186,6 +186,11 @@ setup is:
 WSJT-X -> GridTracker -> wsjtx_queue.py
 ```
 
+In GridTracker, enable `Forward UDP Messages`, set `IP` to `127.0.0.1`, and
+set `Port` to `2238`:
+
+![GridTracker Forward UDP Messages setting](docs/images/gridtracker-forward-udp-messages.png)
+
 For example, if GridTracker forwards WSJT-X UDP packets to `127.0.0.1:2238`,
 you can usually run the queue without a port option; it will try `2237` first
 and fall back to `2238` if `2237` is already in use:
