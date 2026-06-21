@@ -857,6 +857,48 @@ def load_config_defaults(path: pathlib.Path, explicit: bool = False) -> dict[str
     return defaults
 
 
+def write_config(args: argparse.Namespace, path: pathlib.Path) -> None:
+    config = configparser.ConfigParser()
+    config["station"] = {
+        "call": args.call,
+        "grid": args.grid,
+    }
+    config["udp"] = {
+        "host": args.host,
+        "ports": ",".join(str(port) for port in args.ports),
+    }
+    if args.port is not None:
+        config["udp"]["port"] = str(args.port)
+
+    config["queue"] = {
+        "profile": args.profile,
+        "view": args.view,
+        "complete_on": args.complete_on,
+        "completed_suppress": str(args.completed_suppress),
+        "wanted_boost": str(args.wanted_boost),
+        "max_age": str(args.max_age),
+    }
+    if args.wanted:
+        config["queue"]["wanted"] = args.wanted
+
+    config["tx"] = {
+        "min": str(args.tx_min),
+        "max": str(args.tx_max),
+        "step": str(args.tx_step),
+        "guard": str(args.tx_guard),
+        "window": str(args.tx_window),
+    }
+    config["control"] = {"enabled": "yes" if args.control else "no"}
+    config["ui"] = {
+        "refresh": str(args.refresh),
+        "max_udp_batch": str(args.max_udp_batch),
+    }
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as handle:
+        config.write(handle)
+
+
 def udp_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((host, port))
@@ -1259,6 +1301,7 @@ def build_parser(defaults: dict[str, object]) -> argparse.ArgumentParser:
         default=str(default_config_path()),
         help="Config file path; default is the platform user config location",
     )
+    parser.add_argument("--save-config", action="store_true", help="Write the current settings to --config and exit")
     parser.add_argument("--call", help="Your callsign, e.g. AK6IM or K6C")
     parser.add_argument(
         "--grid",
@@ -1358,6 +1401,15 @@ def main() -> None:
     parser = build_parser(defaults)
     args = parser.parse_args()
     validate_args(parser, args)
+
+    if args.save_config:
+        try:
+            write_config(args, pathlib.Path(args.config).expanduser())
+        except OSError as exc:
+            parser.error(f"could not write config {args.config}: {exc}")
+        print(f"Wrote config: {pathlib.Path(args.config).expanduser()}")
+        return
+
     try:
         args.wanted_calls = load_wanted_calls(args.wanted) if args.wanted else set()
     except OSError as exc:

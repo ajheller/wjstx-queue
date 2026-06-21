@@ -174,6 +174,18 @@ Default locations:
 
 Use `--config FILE` to use a different path.
 
+To create or update your config from command-line options:
+
+```sh
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --profile ses --save-config
+```
+
+After that, normal runs can use the saved defaults:
+
+```sh
+python3 wsjtx_queue.py
+```
+
 Example:
 
 ```ini

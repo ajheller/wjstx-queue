@@ -199,6 +199,52 @@ class QueueCoreTests(unittest.TestCase):
         self.assertEqual("field-day", args.profile)
         self.assertEqual("CM87UM", args.grid)
 
+    def test_write_config_writes_current_settings(self):
+        parser = wsjtx_queue.build_parser({})
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "config.ini"
+            args = parser.parse_args(
+                [
+                    "--config",
+                    str(path),
+                    "--call",
+                    "ak6im",
+                    "--grid",
+                    "cm87um",
+                    "--profile",
+                    "arrl-digital",
+                    "--ports",
+                    "2237,2238,2240",
+                    "--control",
+                ]
+            )
+            wsjtx_queue.validate_args(parser, args)
+
+            wsjtx_queue.write_config(args, path)
+            defaults = wsjtx_queue.load_config_defaults(path, explicit=True)
+
+        self.assertEqual("AK6IM", defaults["call"])
+        self.assertEqual("CM87UM", defaults["grid"])
+        self.assertEqual("arrl-digital", defaults["profile"])
+        self.assertEqual([2237, 2238, 2240], defaults["ports"])
+        self.assertTrue(defaults["control"])
+
+    def test_save_config_preserves_defaults_and_applies_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = pathlib.Path(tmpdir) / "config.ini"
+            path.write_text("[station]\ncall = AK6IM\ngrid = CM87um\n[queue]\nprofile = ses\n", encoding="utf-8")
+            defaults = wsjtx_queue.load_config_defaults(path, explicit=True)
+            parser = wsjtx_queue.build_parser(defaults)
+            args = parser.parse_args(["--config", str(path), "--profile", "field-day"])
+            wsjtx_queue.validate_args(parser, args)
+
+            wsjtx_queue.write_config(args, path)
+            saved = wsjtx_queue.load_config_defaults(path, explicit=True)
+
+        self.assertEqual("AK6IM", saved["call"])
+        self.assertEqual("CM87UM", saved["grid"])
+        self.assertEqual("field-day", saved["profile"])
+
     def test_cq_selection_defaults_to_top_ranked_station(self):
         state = self.state()
         state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))
