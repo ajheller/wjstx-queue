@@ -101,31 +101,6 @@ Then run it from Terminal:
 ./wsjtx-queue
 ```
 
-To download the standalone builds from GitHub, open the repository's
-`Actions` tab, choose the latest successful `build` workflow run, and download
-the artifact for your platform from the `Artifacts` section:
-
-- `wsjtx-queue-windows`: contains `wsjtx-queue.exe` and `wsjtx-udp-hub.exe`.
-- `wsjtx-queue-macos`: contains `wsjtx-queue` and `wsjtx-udp-hub`.
-- `wsjtx-queue-linux`: contains `wsjtx-queue` and `wsjtx-udp-hub`.
-
-Each artifact also includes `README.md`, `LICENSE`, and `docs/`. Actions
-artifacts are best for testing unreleased builds. If you build locally with
-PyInstaller instead of GitHub Actions, the standalone files are written under
-`dist/`.
-
-Deploy the current queue and UDP hub scripts to the sBitx test host:
-
-```sh
-make deploy-sbitx
-```
-
-Override the target if needed:
-
-```sh
-make deploy-sbitx SBITX_TARGET=pi@192.168.1.42:~
-```
-
 For an older transceiver/interface chain with less high-audio response, such as
 a Kenwood TS-950S path that rolls off around 2.4 kHz:
 
