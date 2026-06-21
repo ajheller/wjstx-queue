@@ -169,6 +169,36 @@ class QueueCoreTests(unittest.TestCase):
         self.assertEqual(1, state.packet_count)
         self.assertEqual(1, len(sock.packets))
 
+    def test_load_config_defaults_reads_station_and_options(self):
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8") as handle:
+            handle.write("[station]\n")
+            handle.write("call = W6S\n")
+            handle.write("grid = CM87wk\n")
+            handle.write("[udp]\n")
+            handle.write("ports = 2237,2238,2240\n")
+            handle.write("[queue]\n")
+            handle.write("profile = arrl-digital\n")
+            handle.write("[control]\n")
+            handle.write("enabled = yes\n")
+            handle.flush()
+
+            defaults = wsjtx_queue.load_config_defaults(pathlib.Path(handle.name), explicit=True)
+
+        self.assertEqual("W6S", defaults["call"])
+        self.assertEqual("CM87wk", defaults["grid"])
+        self.assertEqual([2237, 2238, 2240], defaults["ports"])
+        self.assertEqual("arrl-digital", defaults["profile"])
+        self.assertTrue(defaults["control"])
+
+    def test_command_line_overrides_config_defaults(self):
+        parser = wsjtx_queue.build_parser({"call": "AK6IM", "grid": "CM87um", "profile": "ses"})
+        args = parser.parse_args(["--call", "W6S", "--profile", "field-day"])
+        wsjtx_queue.validate_args(parser, args)
+
+        self.assertEqual("W6S", args.call)
+        self.assertEqual("field-day", args.profile)
+        self.assertEqual("CM87UM", args.grid)
+
     def test_cq_selection_defaults_to_top_ranked_station(self):
         state = self.state()
         state.add_decode(self.decode("CQ K7ZZZ CN87", snr=1, audio_hz=900))

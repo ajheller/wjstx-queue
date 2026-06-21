@@ -12,13 +12,17 @@ Aaron Heller <AK6IM@ARRL.net>
 from __future__ import annotations
 
 import argparse
+import configparser
 import curses
 import dataclasses
 import datetime as dt
 import math
+import os
+import pathlib
 import re
 import socket
 import struct
+import sys
 import time
 from typing import Callable, Iterable
 
@@ -33,6 +37,7 @@ TYPE_LOGGED_ADIF = 12
 TYPE_CONFIGURE = 15
 NULL_STRING = 0xFFFFFFFF
 DEFAULT_MAX_UDP_BATCH = 100
+CONFIG_BASENAME = "config.ini"
 
 PACKET_NAMES = {
     TYPE_HEARTBEAT: "heartbeat",
@@ -776,6 +781,82 @@ def parse_port_list(text: str) -> list[int]:
     return ports
 
 
+def default_config_path() -> pathlib.Path:
+    if os.name == "nt":
+        base = pathlib.Path(os.environ.get("APPDATA", pathlib.Path.home() / "AppData" / "Roaming"))
+        return base / "wsjtx-queue" / CONFIG_BASENAME
+    return pathlib.Path.home() / ".config" / "wsjtx-queue" / CONFIG_BASENAME
+
+
+def config_get(config: configparser.ConfigParser, section: str, option: str) -> str | None:
+    if config.has_option(section, option):
+        value = config.get(section, option).strip()
+        return value or None
+    return None
+
+
+def config_bool(config: configparser.ConfigParser, section: str, option: str) -> bool | None:
+    if not config.has_option(section, option):
+        return None
+    return config.getboolean(section, option)
+
+
+def config_value(
+    config: configparser.ConfigParser,
+    section: str,
+    option: str,
+    convert: Callable[[str], object] = str,
+) -> object | None:
+    value = config_get(config, section, option)
+    if value is None:
+        return None
+    return convert(value)
+
+
+def load_config_defaults(path: pathlib.Path, explicit: bool = False) -> dict[str, object]:
+    if not path.exists():
+        if explicit:
+            raise FileNotFoundError(path)
+        return {}
+
+    config = configparser.ConfigParser()
+    with path.open(encoding="utf-8") as handle:
+        config.read_file(handle)
+
+    defaults: dict[str, object] = {"config": str(path)}
+    mappings: tuple[tuple[str, str, str, Callable[[str], object]], ...] = (
+        ("station", "call", "call", str),
+        ("station", "grid", "grid", str),
+        ("udp", "host", "host", str),
+        ("udp", "port", "port", parse_udp_port),
+        ("udp", "ports", "ports", parse_port_list),
+        ("queue", "profile", "profile", str),
+        ("queue", "view", "view", str),
+        ("queue", "complete_on", "complete_on", str),
+        ("queue", "completed_suppress", "completed_suppress", int),
+        ("queue", "wanted", "wanted", str),
+        ("queue", "wanted_boost", "wanted_boost", float),
+        ("queue", "max_age", "max_age", int),
+        ("tx", "min", "tx_min", int),
+        ("tx", "max", "tx_max", int),
+        ("tx", "step", "tx_step", int),
+        ("tx", "guard", "tx_guard", int),
+        ("tx", "window", "tx_window", int),
+        ("ui", "refresh", "refresh", float),
+        ("ui", "max_udp_batch", "max_udp_batch", int),
+    )
+    for section, option, arg_name, convert in mappings:
+        value = config_value(config, section, option, convert)
+        if value is not None:
+            defaults[arg_name] = value
+
+    control = config_bool(config, "control", "enabled")
+    if control is not None:
+        defaults["control"] = control
+
+    return defaults
+
+
 def udp_socket(host: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((host, port))
@@ -1171,9 +1252,14 @@ def run_demo(args: argparse.Namespace) -> None:
         print(f"{score:6.1f} {cq.call:8} {cq.grid:6} {dist:>8} {cq.snr:>4} dB  {cq.message}")
 
 
-def main() -> None:
+def build_parser(defaults: dict[str, object]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Rank stations calling you from WSJT-X UDP decodes.")
-    parser.add_argument("--call", required=True, help="Your callsign, e.g. AK6IM or K6C")
+    parser.add_argument(
+        "--config",
+        default=str(default_config_path()),
+        help="Config file path; default is the platform user config location",
+    )
+    parser.add_argument("--call", help="Your callsign, e.g. AK6IM or K6C")
     parser.add_argument(
         "--grid",
         default="CM87um",
@@ -1238,7 +1324,40 @@ def main() -> None:
         help="Maximum UDP packets to process before checking keyboard input",
     )
     parser.add_argument("--demo", action="store_true", help="Print demo rankings and exit")
+    parser.set_defaults(**defaults)
+    return parser
+
+
+def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    if not args.call:
+        parser.error("--call is required unless it is set in the config file")
+    args.call = args.call.upper()
+    args.grid = args.grid.upper()
+    if args.profile not in SCORERS:
+        parser.error(f"invalid profile {args.profile!r}; choose from {', '.join(sorted(SCORERS))}")
+    if args.view not in {"queue", "cqs", "both", "worked"}:
+        parser.error("invalid view; choose from queue, cqs, both, worked")
+    if args.complete_on not in {"log-or-73", "log-only", "73-only"}:
+        parser.error("invalid complete_on; choose from log-or-73, log-only, 73-only")
+    if args.max_udp_batch < 1:
+        parser.error("--max-udp-batch must be at least 1")
+
+
+def main() -> None:
+    config_probe = argparse.ArgumentParser(add_help=False)
+    config_probe.add_argument("--config", default=str(default_config_path()))
+    config_args, _ = config_probe.parse_known_args()
+    config_path = pathlib.Path(config_args.config).expanduser()
+    explicit_config = any(arg == "--config" or arg.startswith("--config=") for arg in sys.argv[1:])
+
+    try:
+        defaults = load_config_defaults(config_path, explicit=explicit_config)
+    except (OSError, configparser.Error, ValueError, argparse.ArgumentTypeError) as exc:
+        config_probe.error(f"could not read config {config_path}: {exc}")
+
+    parser = build_parser(defaults)
     args = parser.parse_args()
+    validate_args(parser, args)
     try:
         args.wanted_calls = load_wanted_calls(args.wanted) if args.wanted else set()
     except OSError as exc:

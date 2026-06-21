@@ -31,6 +31,13 @@ WSJT-X as `Rx DF`. Straight WSJT-X/WSJT-X Improved UDP does not provide a direct
 python3 wsjtx_queue.py --call AK6IM
 ```
 
+You can also put your normal settings in a config file and then run without
+retyping them:
+
+```sh
+python3 wsjtx_queue.py
+```
+
 By default the queue tries to bind UDP port `2237` first, then `2238`. This
 covers the common cases where WSJT-X sends directly to the queue, or GridTracker
 is already using `2237` and forwarding packets to `2238`.
@@ -153,6 +160,44 @@ To start on the session worked-stations list:
 ```sh
 python3 wsjtx_queue.py --call AK6IM --view worked
 ```
+
+## Config File
+
+Command-line options are still the quickest way to try the tool, but regular
+operators can store their defaults in a config file. Command-line options
+override config file values.
+
+Default locations:
+
+- macOS/Linux: `~/.config/wsjtx-queue/config.ini`
+- Windows: `%APPDATA%\wsjtx-queue\config.ini`
+
+Use `--config FILE` to use a different path.
+
+Example:
+
+```ini
+[station]
+call = AK6IM
+grid = CM87um
+
+[udp]
+ports = 2237,2238
+
+[queue]
+profile = ses
+complete_on = log-or-73
+wanted = wanted.txt
+
+[tx]
+max = 2600
+
+[ui]
+refresh = 0.25
+```
+
+For distance-scored contest profiles, such as `arrl-digital`, set `grid` to
+your home or activation grid square.
 
 ## WSJT-X Setup
 
