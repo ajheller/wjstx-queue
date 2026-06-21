@@ -32,6 +32,7 @@ TYPE_QSO_LOGGED = 5
 TYPE_LOGGED_ADIF = 12
 TYPE_CONFIGURE = 15
 NULL_STRING = 0xFFFFFFFF
+DEFAULT_MAX_UDP_BATCH = 100
 
 PACKET_NAMES = {
     TYPE_HEARTBEAT: "heartbeat",
@@ -1012,8 +1013,70 @@ def send_top_cq_dx(sock: socket.socket, state: QueueState, profile: str, control
     state.set_control_message(f"sent DX {station.call}{grid} at {station.audio_hz} Hz to {state.client_id}")
 
 
+def process_udp_packet(state: QueueState, data: bytes, peer: tuple[str, int]) -> None:
+    try:
+        msg_type, payload = parse_packet(data)
+        state.note_client(payload, peer)
+        state.note_packet(msg_type)
+        if msg_type == TYPE_DECODE and isinstance(payload, Decode):
+            state.add_decode(payload)
+        elif msg_type in (TYPE_LOGGED_ADIF, TYPE_QSO_LOGGED) and isinstance(payload, LoggedCall):
+            state.remove_logged_call(payload.call)
+        elif msg_type == TYPE_CLEAR:
+            state.callers.clear()
+            state.last_packet_detail = "cleared"
+    except PacketError as exc:
+        state.last_error = str(exc)
+
+
+def process_pending_udp(sock: socket.socket, state: QueueState, max_packets: int) -> int:
+    processed = 0
+    while processed < max_packets:
+        try:
+            data, peer = sock.recvfrom(65535)
+        except BlockingIOError:
+            break
+        process_udp_packet(state, data, peer)
+        processed += 1
+    return processed
+
+
+def handle_key(
+    key: int,
+    sock: socket.socket,
+    state: QueueState,
+    profile: str,
+    view: str,
+    control_enabled: bool,
+) -> tuple[str, str, bool]:
+    keep_running = True
+    if key in (ord("q"), ord("Q")):
+        keep_running = False
+    elif key == ord("1"):
+        profile = "ses"
+    elif key == ord("2"):
+        profile = "arrl-digital"
+    elif key == ord("3"):
+        profile = "field-day"
+    elif key in (ord("v"), ord("V")):
+        view = next_view(view)
+    elif key == curses.KEY_UP and view in {"cqs", "both"}:
+        state.move_cq_selection(profile, -1)
+    elif key == curses.KEY_DOWN and view in {"cqs", "both"}:
+        state.move_cq_selection(profile, 1)
+    elif key in (ord("t"), ord("T")):
+        send_suggested_rx_df(sock, state, control_enabled)
+    elif key in (curses.KEY_ENTER, 10, 13):
+        send_top_cq_dx(sock, state, profile, control_enabled)
+    elif key in (ord("c"), ord("C")):
+        state.callers.clear()
+        state.cqs.clear()
+    return profile, view, keep_running
+
+
 def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
     curses.curs_set(0)
+    stdscr.keypad(True)
     stdscr.nodelay(True)
     state = QueueState(
         args.call,
@@ -1034,55 +1097,23 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
     sock, bound_port = udp_socket_from_ports(args.host, ports)
     profile = args.profile
     view = args.view
+    keep_running = True
 
-    while True:
-        try:
-            while True:
-                try:
-                    data, peer = sock.recvfrom(65535)
-                except BlockingIOError:
-                    break
-                try:
-                    msg_type, payload = parse_packet(data)
-                    state.note_client(payload, peer)
-                    state.note_packet(msg_type)
-                    if msg_type == TYPE_DECODE and isinstance(payload, Decode):
-                        state.add_decode(payload)
-                    elif msg_type in (TYPE_LOGGED_ADIF, TYPE_QSO_LOGGED) and isinstance(payload, LoggedCall):
-                        state.remove_logged_call(payload.call)
-                    elif msg_type == TYPE_CLEAR:
-                        state.callers.clear()
-                        state.last_packet_detail = "cleared"
-                except PacketError as exc:
-                    state.last_error = str(exc)
+    while keep_running:
+        process_pending_udp(sock, state, args.max_udp_batch)
 
-            key = stdscr.getch()
-            if key in (ord("q"), ord("Q")):
+        key = stdscr.getch()
+        while key != -1:
+            profile, view, keep_running = handle_key(key, sock, state, profile, view, args.control)
+            if not keep_running:
                 break
-            if key == ord("1"):
-                profile = "ses"
-            elif key == ord("2"):
-                profile = "arrl-digital"
-            elif key == ord("3"):
-                profile = "field-day"
-            elif key in (ord("v"), ord("V")):
-                view = next_view(view)
-            elif key == curses.KEY_UP and view in {"cqs", "both"}:
-                state.move_cq_selection(profile, -1)
-            elif key == curses.KEY_DOWN and view in {"cqs", "both"}:
-                state.move_cq_selection(profile, 1)
-            elif key in (ord("t"), ord("T")):
-                send_suggested_rx_df(sock, state, args.control)
-            elif key in (curses.KEY_ENTER, 10, 13):
-                send_top_cq_dx(sock, state, profile, args.control)
-            elif key in (ord("c"), ord("C")):
-                state.callers.clear()
-                state.cqs.clear()
+            key = stdscr.getch()
 
-            render(stdscr, state, profile, view, args.host, bound_port)
-            time.sleep(args.refresh)
-        finally:
-            pass
+        if not keep_running:
+            break
+
+        render(stdscr, state, profile, view, args.host, bound_port)
+        time.sleep(args.refresh)
 
 
 def demo_packets(my_call: str) -> Iterable[Decode]:
@@ -1200,6 +1231,12 @@ def main() -> None:
         help="Enable WSJT-X UDP control hotkeys, including T to set Rx DF",
     )
     parser.add_argument("--refresh", type=float, default=0.25, help="UI refresh interval")
+    parser.add_argument(
+        "--max-udp-batch",
+        type=int,
+        default=DEFAULT_MAX_UDP_BATCH,
+        help="Maximum UDP packets to process before checking keyboard input",
+    )
     parser.add_argument("--demo", action="store_true", help="Print demo rankings and exit")
     args = parser.parse_args()
     try:

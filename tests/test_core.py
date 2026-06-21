@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import pathlib
+import struct
 import sys
 import tempfile
 import unittest
@@ -22,6 +23,34 @@ class FakeSocket:
 
     def getsockname(self):
         return ("127.0.0.1", 2238)
+
+
+class FakeReceiveSocket:
+    def __init__(self, packets):
+        self.packets = list(packets)
+
+    def recvfrom(self, size):
+        if not self.packets:
+            raise BlockingIOError
+        return self.packets.pop(0)
+
+
+def encode_decode_for_test(decode):
+    return b"".join(
+        [
+            struct.pack(">III", wsjtx_queue.MAGIC, wsjtx_queue.SCHEMA, wsjtx_queue.TYPE_DECODE),
+            wsjtx_queue.qutf8(decode.client_id),
+            wsjtx_queue.qbool(decode.is_new),
+            wsjtx_queue.qu32(decode.time_ms),
+            struct.pack(">i", decode.snr),
+            struct.pack(">d", decode.dt_seconds),
+            wsjtx_queue.qu32(decode.audio_hz),
+            wsjtx_queue.qutf8(decode.mode),
+            wsjtx_queue.qutf8(decode.message),
+            wsjtx_queue.qbool(decode.low_confidence),
+            wsjtx_queue.qbool(decode.off_air),
+        ]
+    )
 
 
 class QueueCoreTests(unittest.TestCase):
@@ -127,6 +156,18 @@ class QueueCoreTests(unittest.TestCase):
 
         self.assertIsInstance(sock, FakeSocket)
         self.assertEqual(2238, bound_port)
+
+    def test_process_pending_udp_stops_at_batch_limit(self):
+        packet = self.decode("AK6IM K1ABC FN42")
+        raw = encode_decode_for_test(packet)
+        sock = FakeReceiveSocket([(raw, ("127.0.0.1", 2237)), (raw, ("127.0.0.1", 2237))])
+        state = self.state()
+
+        processed = wsjtx_queue.process_pending_udp(sock, state, 1)
+
+        self.assertEqual(1, processed)
+        self.assertEqual(1, state.packet_count)
+        self.assertEqual(1, len(sock.packets))
 
     def test_cq_selection_defaults_to_top_ranked_station(self):
         state = self.state()
