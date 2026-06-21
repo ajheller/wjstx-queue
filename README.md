@@ -1,38 +1,47 @@
 # WSJT-X Queue
 
-Small terminal queue manager for stations calling your callsign in WSJT-X.
+Terminal helper for FT8/FT4 operating with WSJT-X and WSJT-X Improved.
 
-It listens to the same UDP output used by tools like GridTracker, extracts
-directed messages such as:
+`wsjtx-queue` listens to the same WSJT-X UDP output used by tools like
+GridTracker and turns recent decodes into operator-focused lists:
+
+- a caller queue for stations calling your callsign during special-event, POTA,
+  and contest pileups
+- a CQ/QRZ list for hunting stations, including `CQ POTA`
+- a worked-stations list for the current session
+- wanted-call highlighting for special events, museum ships, W1AW portable
+  operations, contest targets, and other chase lists
+- TX audio-frequency suggestions based on holes among recent decodes
+- optional WSJT-X control hotkeys for setting Rx DF or preparing a selected CQ
+  station
+
+Directed messages such as:
 
 ```text
 AK6IM K1ABC FN42
 K6C JA1NUT PM95
 ```
 
-and ranks the callers using an operator-selectable profile.
+are ranked using an operator-selectable profile such as `ses`, `field-day`,
+`arrl-digital`, or `pota`.
 
 When WSJT-X logs a QSO, the matching station is removed from the queue.
 If the station later sends a final `73` to your callsign, that also removes it
 from the queue even when WSJT-X does not emit another log event.
 
-The bottom status line shows the last WSJT-X UDP packet received, how long ago
-it arrived, and the decoded/logged detail when available.
-
-The UI also suggests a TX audio frequency by looking for holes among recent
-decodes. It does not change WSJT-X; it only tells you where a clean spot may be.
-When started with `--control`, pressing `T` sends the suggested frequency to
-WSJT-X as `Rx DF`. Straight WSJT-X/WSJT-X Improved UDP does not provide a direct
-`Tx DF` setter.
+By default the tool is listen-only. With `--control`, it can send WSJT-X UDP
+`Configure` packets, but it still does not transmit, key PTT, or control CAT.
 
 ## Run
 
+First run: save your normal callsign and grid square. Your grid matters for
+distance-aware profiles such as `arrl-digital` and `pota`.
+
 ```sh
-python3 wsjtx_queue.py --call AK6IM
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --profile ses --save-config
 ```
 
-You can also put your normal settings in a config file and then run without
-retyping them:
+After that, normal runs can use the saved defaults:
 
 ```sh
 python3 wsjtx_queue.py
@@ -45,13 +54,13 @@ is already using `2237` and forwarding packets to `2238`.
 For a special event callsign:
 
 ```sh
-python3 wsjtx_queue.py --call K6C --profile ses
+python3 wsjtx_queue.py --call K6C --grid CM87um --profile ses
 ```
 
 Demo mode, with no radio needed:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --demo
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --demo
 ```
 
 GitHub Actions builds standalone Windows, macOS, and Linux artifacts for
@@ -88,7 +97,8 @@ xattr -dr com.apple.quarantine ~/Downloads/wsjtx-queue-vX.Y.Z-macos
 Then run it from Terminal:
 
 ```sh
-./wsjtx-queue --call AK6IM
+./wsjtx-queue --call AK6IM --grid CM87um --profile ses --save-config
+./wsjtx-queue
 ```
 
 To download the standalone builds from GitHub, open the repository's
@@ -120,25 +130,25 @@ For an older transceiver/interface chain with less high-audio response, such as
 a Kenwood TS-950S path that rolls off around 2.4 kHz:
 
 ```sh
-python3 wsjtx_queue.py --call W6S --tx-max 2400
+python3 wsjtx_queue.py --call W6S --grid CM87um --tx-max 2400
 ```
 
 For contest/rate operating where your local log event is enough:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --profile arrl-digital --complete-on log-only
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --profile arrl-digital --complete-on log-only
 ```
 
 To prioritize a chase list in the caller queue and CQ/QRZ list:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --wanted wanted.txt
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --wanted wanted.txt
 ```
 
 To enable WSJT-X control hotkeys:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --control
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --control
 ```
 
 `--command` is accepted as an alias for `--control`.
@@ -146,19 +156,19 @@ python3 wsjtx_queue.py --call AK6IM --control
 To start in the CQ/QRZ list instead of the caller queue:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --view cqs
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --view cqs
 ```
 
 Or show both lists:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --view both
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --view both
 ```
 
 To start on the session worked-stations list:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --view worked
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --view worked
 ```
 
 ## Config File
@@ -225,13 +235,13 @@ In WSJT-X, open `Settings -> Reporting`.
 If you need to pin a single queue port, use `--port`:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --port 2240
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --port 2240
 ```
 
 If you want a different fallback list, use `--ports`:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --ports 2237,2238,2240
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --ports 2237,2238,2240
 ```
 
 ## Quick Start With GridTracker Forwarding
@@ -253,7 +263,8 @@ you can usually run the queue without a port option; it will try `2237` first
 and fall back to `2238` if `2237` is already in use:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --save-config
+python3 wsjtx_queue.py
 ```
 
 Do not add `--control` for the normal GridTracker-forwarding setup. Some
@@ -292,7 +303,7 @@ python3 wsjtx_udp_hub.py \
 Run the queue against the hub:
 
 ```sh
-python3 wsjtx_queue.py --call AK6IM --port 2240
+python3 wsjtx_queue.py --call AK6IM --grid CM87um --port 2240
 ```
 
 Configure WSJT-X UDP to send to `127.0.0.1:2237`. Configure GridTracker to use
