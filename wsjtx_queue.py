@@ -192,6 +192,18 @@ class WorkedStation:
     count: int = 1
 
 
+@dataclasses.dataclass(frozen=True)
+class TxCandidate:
+    hz: int
+    score: float
+    clearance: int | None
+    edge_clearance: int
+    occupied_count: int
+    target_call: str = ""
+    target_hz: int | None = None
+    target_delta: int | None = None
+
+
 def parse_packet(data: bytes) -> tuple[int, object | None]:
     r = Reader(data)
     magic = r.u32()
@@ -700,26 +712,59 @@ class QueueState:
         keys = {call.upper(), base_call(call)}
         return any(key in self.wanted_calls for key in keys)
 
-    def suggested_tx(self) -> tuple[int | None, int | None, int]:
+    def tx_candidates(
+        self,
+        target_hz: int | None = None,
+        target_call: str = "",
+        limit: int = 10,
+    ) -> list[TxCandidate]:
         self.prune_recent_decodes()
         if self.tx_max_hz < self.tx_min_hz:
-            return None, None, len(self.recent_decodes)
+            return []
 
         occupied = [d.audio_hz for d in self.recent_decodes if self.tx_min_hz <= d.audio_hz <= self.tx_max_hz]
-        if not occupied:
-            return (self.tx_min_hz + self.tx_max_hz) // 2, None, 0
-
-        best_hz = self.tx_min_hz
-        best_clearance = -1
+        passband_center = (self.tx_min_hz + self.tx_max_hz) / 2
+        candidates = []
         for hz in range(self.tx_min_hz, self.tx_max_hz + 1, self.tx_step_hz):
-            clearance = min(abs(hz - other) for other in occupied)
             edge_clearance = min(hz - self.tx_min_hz, self.tx_max_hz - hz)
-            score = min(clearance, edge_clearance + self.tx_guard_hz)
-            if score > best_clearance:
-                best_hz = hz
-                best_clearance = score
+            clearance = min(abs(hz - other) for other in occupied) if occupied else None
+            clearance_cap = self.tx_guard_hz if target_hz is not None else self.tx_guard_hz * 4
+            local_clearance = clearance_cap if clearance is None else min(clearance, clearance_cap)
+            tight_penalty = max(0, self.tx_guard_hz - (clearance or self.tx_guard_hz * 4)) * 4
+            edge_score = min(edge_clearance, self.tx_guard_hz) * 0.5
+            target_delta = abs(hz - target_hz) if target_hz is not None else None
+            target_bonus = max(0.0, 80.0 - target_delta / 10.0) if target_delta is not None else 0.0
+            mid_passband_bonus = max(0.0, 20.0 - abs(hz - passband_center) / 100.0)
+            score = local_clearance + edge_score + target_bonus + mid_passband_bonus - tight_penalty
+            candidates.append(
+                TxCandidate(
+                    hz=hz,
+                    score=score,
+                    clearance=clearance,
+                    edge_clearance=edge_clearance,
+                    occupied_count=len(occupied),
+                    target_call=target_call,
+                    target_hz=target_hz,
+                    target_delta=target_delta,
+                )
+            )
 
-        return best_hz, best_clearance, len(occupied)
+        candidates.sort(key=lambda candidate: (candidate.score, candidate.clearance or 9999), reverse=True)
+        chosen = []
+        min_spacing = max(self.tx_guard_hz, self.tx_step_hz * 3)
+        for candidate in candidates:
+            if all(abs(candidate.hz - other.hz) >= min_spacing for other in chosen):
+                chosen.append(candidate)
+                if len(chosen) >= limit:
+                    break
+        return chosen
+
+    def suggested_tx(self) -> tuple[int | None, int | None, int]:
+        candidates = self.tx_candidates(limit=1)
+        if candidates:
+            candidate = candidates[0]
+            return candidate.hz, candidate.clearance, candidate.occupied_count
+        return None, None, len(self.recent_decodes)
 
     def remove_logged_call(self, call: str) -> None:
         self.logged_count += 1
@@ -976,7 +1021,7 @@ def udp_socket_from_ports(host: str, ports: Iterable[int]) -> tuple[socket.socke
 
 
 def next_view(view: str) -> str:
-    views = ["queue", "cqs", "both", "worked"]
+    views = ["queue", "cqs", "both", "worked", "tx"]
     return views[(views.index(view) + 1) % len(views)]
 
 
@@ -1017,6 +1062,64 @@ def render_table_header(stdscr: curses.window, y: int, width: int, label: str) -
     return y + 1
 
 
+def tx_bias_target(state: QueueState, profile: str) -> tuple[str, int | None]:
+    cq = state.selected_cq(profile)
+    if cq:
+        return cq.call, cq.audio_hz
+
+    callers = state.ranked(profile)
+    if callers:
+        caller = callers[0][1]
+        return caller.call, caller.audio_hz
+
+    return "", None
+
+
+def render_tx_header(stdscr: curses.window, y: int, width: int, label: str) -> int:
+    stdscr.addnstr(y, 0, label, width - 1, curses.A_BOLD)
+    y += 1
+    stdscr.addnstr(
+        y,
+        0,
+        f"{'#':>2} {'Score':>7} {'TX Hz':>5} {'Clear':>7} {'Edge':>5} {'Target':<20} Why",
+        width - 1,
+        curses.A_UNDERLINE,
+    )
+    return y + 1
+
+
+def render_tx_candidate(
+    stdscr: curses.window,
+    y: int,
+    width: int,
+    idx: int,
+    candidate: TxCandidate,
+    guard_hz: int,
+    attr: int = curses.A_NORMAL,
+) -> None:
+    clear_text = "open" if candidate.clearance is None else str(candidate.clearance)
+    if candidate.target_call and candidate.target_hz is not None and candidate.target_delta is not None:
+        target_text = f"{candidate.target_call} {candidate.target_hz} d{candidate.target_delta}"
+    else:
+        target_text = "-"
+
+    if candidate.clearance is None:
+        why = "no recent decodes"
+    else:
+        status = "clear" if candidate.clearance >= guard_hz else "tight"
+        why = f"{status}; nearest decode {candidate.clearance} Hz"
+    if candidate.target_delta is not None:
+        why += f"; near target {candidate.target_delta} Hz"
+    if candidate.edge_clearance < guard_hz:
+        why += f"; edge {candidate.edge_clearance} Hz"
+
+    line = (
+        f"{idx:>2} {candidate.score:>7.1f} {candidate.hz:>5} {clear_text:>7} "
+        f"{candidate.edge_clearance:>5} {target_text:<20} {why}"
+    )
+    stdscr.addnstr(y, 0, line, width - 1, attr)
+
+
 def render(
     stdscr: curses.window,
     state: QueueState,
@@ -1038,7 +1141,7 @@ def render(
         1,
         0,
         "Keys: 1 SES  2 ARRL Digital  3 Field Day  4 POTA  v view  Up/Down select CQ  "
-        "Enter set DX  T set Rx DF  c clear  q quit  ! wanted  * worked",
+        "Enter set DX  T set Rx DF  c clear  q quit  tx view  ! wanted  * worked",
         width - 1,
         curses.A_DIM,
     )
@@ -1127,6 +1230,27 @@ def render(
             age = now - worked.worked_at
             line = f"{idx:>2} {worked.call:<12} {worked.count:>5} {age:>6.0f}"
             stdscr.addnstr(y, 0, line, width - 1)
+            y += 1
+
+    if view == "tx" and y < height - 2:
+        target_call, target_hz = tx_bias_target(state, profile)
+        if target_call and target_hz is not None:
+            target_line = f"Target bias: near {target_call} at {target_hz} Hz"
+        else:
+            target_line = "Target bias: none; ranking uses local clear space and passband edges"
+        stdscr.addnstr(y, 0, target_line, width - 1, curses.A_DIM)
+        y += 1
+        if y < height - 2:
+            y = render_tx_header(stdscr, y, width, "TX Frequency Candidates")
+        candidates = state.tx_candidates(target_hz, target_call)
+        if not candidates and y < height - 2:
+            stdscr.addnstr(y, 0, "No TX candidates; check --tx-min/--tx-max.", width - 1, curses.A_REVERSE)
+            y += 1
+        for idx, candidate in enumerate(candidates, start=1):
+            if y >= height - 2:
+                break
+            attr = curses.A_BOLD if idx == 1 else curses.A_NORMAL
+            render_tx_candidate(stdscr, y, width, idx, candidate, state.tx_guard_hz, attr)
             y += 1
 
     if state.last_packet:
@@ -1382,7 +1506,7 @@ def build_parser(defaults: dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--profile", choices=sorted(SCORERS), default="ses")
     parser.add_argument(
         "--view",
-        choices=("queue", "cqs", "both", "worked"),
+        choices=("queue", "cqs", "both", "worked", "tx"),
         default="queue",
         help="Initial table view",
     )
@@ -1453,8 +1577,8 @@ def validate_args(parser: argparse.ArgumentParser, args: argparse.Namespace) -> 
     args.grid = args.grid.upper()
     if args.profile not in SCORERS:
         parser.error(f"invalid profile {args.profile!r}; choose from {', '.join(sorted(SCORERS))}")
-    if args.view not in {"queue", "cqs", "both", "worked"}:
-        parser.error("invalid view; choose from queue, cqs, both, worked")
+    if args.view not in {"queue", "cqs", "both", "worked", "tx"}:
+        parser.error("invalid view; choose from queue, cqs, both, worked, tx")
     if args.complete_on not in {"log-or-73", "log-only", "73-only"}:
         parser.error("invalid complete_on; choose from log-or-73, log-only, 73-only")
     if args.max_udp_batch < 1:

@@ -177,6 +177,36 @@ class QueueCoreTests(unittest.TestCase):
 
         self.assertEqual("pota", args.profile)
 
+    def test_tx_view_is_accepted_by_parser(self):
+        parser = wsjtx_queue.build_parser({"call": "AK6IM", "grid": "CM87um"})
+        args = parser.parse_args(["--view", "tx"])
+        wsjtx_queue.validate_args(parser, args)
+
+        self.assertEqual("tx", args.view)
+        self.assertEqual("tx", wsjtx_queue.next_view("worked"))
+
+    def test_tx_candidates_prefer_clear_lane_near_target(self):
+        state = self.state()
+        state.add_decode(self.decode("CQ DX K7ZZZ CN87", audio_hz=1500))
+        state.add_decode(self.decode("CQ W1AW FN31", audio_hz=1000))
+        state.add_decode(self.decode("CQ K6C CM87", audio_hz=2100))
+
+        candidates = state.tx_candidates(target_hz=1500, target_call="K7ZZZ", limit=3)
+
+        self.assertEqual(3, len(candidates))
+        self.assertGreaterEqual(candidates[0].clearance, state.tx_guard_hz)
+        self.assertLessEqual(candidates[0].target_delta, state.tx_guard_hz + state.tx_step_hz)
+        self.assertEqual("K7ZZZ", candidates[0].target_call)
+
+    def test_tx_candidates_without_decodes_use_mid_passband(self):
+        state = self.state()
+
+        candidates = state.tx_candidates(limit=1)
+
+        self.assertEqual(1450, candidates[0].hz)
+        self.assertIsNone(candidates[0].clearance)
+        self.assertEqual(0, candidates[0].occupied_count)
+
     def test_parse_port_list(self):
         self.assertEqual(2237, wsjtx_queue.parse_udp_port("2237"))
         self.assertEqual([2237, 2238], wsjtx_queue.parse_port_list("2237, 2238"))

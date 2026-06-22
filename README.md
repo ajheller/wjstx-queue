@@ -182,6 +182,12 @@ To start on the session worked-stations list:
 wsjtx-queue --call AK6IM --grid CM87um --view worked
 ```
 
+To start on the TX frequency candidate list:
+
+```sh
+wsjtx-queue --call AK6IM --grid CM87um --view tx
+```
+
 ## Config File
 
 Command-line options are still the quickest way to try the tool, but regular
@@ -299,7 +305,8 @@ Press these keys while the UI is running:
 - `4`: `pota` - favors fresh, workable callers with a modest distance boost.
   In CQ/QRZ view, activation CQs such as `CQ POTA` and `CQ SOTA` are strongly
   boosted for hunters.
-- `v`: cycle between caller queue, CQ/QRZ list, both lists, and worked list.
+- `v`: cycle between caller queue, CQ/QRZ list, both lists, worked list, and
+  TX frequency candidates.
 - `Up` / `Down`: select a CQ/QRZ row. Selection follows the callsign when rows
   re-rank.
 - `Enter`: when started with `--control`, set WSJT-X `DX Call`, `DX Grid`,
@@ -405,7 +412,16 @@ intact.
 ## TX Frequency Suggestion
 
 By default, TX suggestions are limited to `300-2600 Hz` and use decodes from
-the last `120` seconds. Useful options:
+the last `120` seconds. The footer shows the top suggestion. The `tx` view shows
+a ranked list of candidate audio frequencies, including local clearance, edge
+spacing, and any target-frequency bias.
+
+When a CQ/QRZ station is selected, or when there is a top-ranked caller, the
+candidate list mildly favors clear holes near that station's decoded audio
+frequency. This is only a local heuristic; it does not know what the DX station's
+receiver passband or local QRM looks like.
+
+Useful options:
 
 - `--tx-min 300`: lowest TX audio frequency to suggest.
 - `--tx-max 2600`: highest TX audio frequency to suggest.
