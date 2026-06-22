@@ -38,6 +38,13 @@ TYPE_CONFIGURE = 15
 NULL_STRING = 0xFFFFFFFF
 DEFAULT_MAX_UDP_BATCH = 100
 CONFIG_BASENAME = "config.ini"
+DEFAULT_ACTIVATION_BOOST = 150.0
+DEFAULT_ACTIVATION_TAGS = "POTA,SOTA"
+
+
+def parse_activation_tags(value: str) -> frozenset[str]:
+    return frozenset(tag.strip().upper() for tag in value.split(",") if tag.strip())
+
 
 PACKET_NAMES = {
     TYPE_HEARTBEAT: "heartbeat",
@@ -140,6 +147,10 @@ class Caller:
     grid: str = ""
     distance_km: float | None = None
     heard_count: int = 1
+    activation_boost: float = DEFAULT_ACTIVATION_BOOST
+    activation_tags: frozenset[str] = dataclasses.field(
+        default_factory=lambda: parse_activation_tags(DEFAULT_ACTIVATION_TAGS)
+    )
 
 
 @dataclasses.dataclass
@@ -154,6 +165,10 @@ class CqStation:
     grid: str = ""
     distance_km: float | None = None
     heard_count: int = 1
+    activation_boost: float = DEFAULT_ACTIVATION_BOOST
+    activation_tags: frozenset[str] = dataclasses.field(
+        default_factory=lambda: parse_activation_tags(DEFAULT_ACTIVATION_TAGS)
+    )
 
 
 @dataclasses.dataclass
@@ -433,9 +448,13 @@ def score_field_day(c: Caller, now: float) -> float:
     return snr_bonus + easy_audio_bonus - dt_penalty - min(age, 120) / 5
 
 
-def pota_message_bonus(message: str) -> float:
+def activation_message_bonus(
+    message: str,
+    boost: float = DEFAULT_ACTIVATION_BOOST,
+    tags: frozenset[str] = parse_activation_tags(DEFAULT_ACTIVATION_TAGS),
+) -> float:
     tokens = message.split()
-    return 35.0 if len(tokens) >= 2 and tokens[0] == "CQ" and "POTA" in tokens[1:] else 0.0
+    return boost if len(tokens) >= 2 and tokens[0] == "CQ" and any(token in tags for token in tokens[1:]) else 0.0
 
 
 def score_pota(c: Caller, now: float) -> float:
@@ -448,7 +467,7 @@ def score_pota(c: Caller, now: float) -> float:
         + snr_bonus
         + dist / 500
         + easy_audio_bonus
-        + pota_message_bonus(c.message)
+        + activation_message_bonus(c.message, c.activation_boost, c.activation_tags)
         - min(age, 180) / 4
         - abs(c.dt_seconds) * 10
     )
@@ -477,6 +496,8 @@ class QueueState:
         completed_suppress: int,
         wanted_calls: set[str] | None = None,
         wanted_boost: float = 0.0,
+        activation_boost: float = DEFAULT_ACTIVATION_BOOST,
+        activation_tags: frozenset[str] = parse_activation_tags(DEFAULT_ACTIVATION_TAGS),
     ) -> None:
         self.my_call = my_call.upper()
         self.my_grid = my_grid.upper()
@@ -490,6 +511,8 @@ class QueueState:
         self.completed_suppress = completed_suppress
         self.wanted_calls = wanted_calls or set()
         self.wanted_boost = wanted_boost
+        self.activation_boost = activation_boost
+        self.activation_tags = activation_tags
         self.callers: dict[str, Caller] = {}
         self.cqs: dict[str, CqStation] = {}
         self.selected_cq_call = ""
@@ -573,6 +596,8 @@ class QueueState:
             existing.dt_seconds = decode.dt_seconds
             existing.audio_hz = decode.audio_hz
             existing.message = decode.message
+            existing.activation_boost = self.activation_boost
+            existing.activation_tags = self.activation_tags
             existing.heard_count += 1
             if grid:
                 existing.grid = grid
@@ -588,6 +613,8 @@ class QueueState:
                 message=decode.message,
                 grid=grid,
                 distance_km=dist,
+                activation_boost=self.activation_boost,
+                activation_tags=self.activation_tags,
             )
 
     def add_cq_decode(self, decode: Decode) -> bool:
@@ -606,6 +633,8 @@ class QueueState:
             existing.dt_seconds = decode.dt_seconds
             existing.audio_hz = decode.audio_hz
             existing.message = decode.message
+            existing.activation_boost = self.activation_boost
+            existing.activation_tags = self.activation_tags
             existing.heard_count += 1
             if grid:
                 existing.grid = grid
@@ -621,6 +650,8 @@ class QueueState:
                 message=decode.message,
                 grid=grid,
                 distance_km=dist,
+                activation_boost=self.activation_boost,
+                activation_tags=self.activation_tags,
             )
         return True
 
@@ -858,6 +889,8 @@ def load_config_defaults(path: pathlib.Path, explicit: bool = False) -> dict[str
         ("queue", "completed_suppress", "completed_suppress", int),
         ("queue", "wanted", "wanted", str),
         ("queue", "wanted_boost", "wanted_boost", float),
+        ("queue", "activation_boost", "activation_boost", float),
+        ("queue", "activation_tags", "activation_tags", parse_activation_tags),
         ("queue", "max_age", "max_age", int),
         ("tx", "min", "tx_min", int),
         ("tx", "max", "tx_max", int),
@@ -898,6 +931,8 @@ def write_config(args: argparse.Namespace, path: pathlib.Path) -> None:
         "complete_on": args.complete_on,
         "completed_suppress": str(args.completed_suppress),
         "wanted_boost": str(args.wanted_boost),
+        "activation_boost": str(args.activation_boost),
+        "activation_tags": ",".join(sorted(args.activation_tags)),
         "max_age": str(args.max_age),
     }
     if args.wanted:
@@ -1238,6 +1273,8 @@ def run_curses(stdscr: curses.window, args: argparse.Namespace) -> None:
         args.completed_suppress,
         args.wanted_calls,
         args.wanted_boost,
+        args.activation_boost,
+        args.activation_tags,
     )
     state.set_control_enabled(args.control)
     ports = [args.port] if args.port is not None else args.ports
@@ -1301,6 +1338,8 @@ def run_demo(args: argparse.Namespace) -> None:
         args.completed_suppress,
         args.wanted_calls,
         args.wanted_boost,
+        args.activation_boost,
+        args.activation_tags,
     )
     for decode in demo_packets(args.call):
         state.add_decode(decode)
@@ -1361,6 +1400,18 @@ def build_parser(defaults: dict[str, object]) -> argparse.ArgumentParser:
     )
     parser.add_argument("--wanted", help="File of wanted callsigns to mark and boost in rankings")
     parser.add_argument("--wanted-boost", type=float, default=1000.0, help="Score boost for calls in --wanted")
+    parser.add_argument(
+        "--activation-boost",
+        type=float,
+        default=DEFAULT_ACTIVATION_BOOST,
+        help="Score boost for activation-tagged CQ rows when using the pota profile",
+    )
+    parser.add_argument(
+        "--activation-tags",
+        type=parse_activation_tags,
+        default=parse_activation_tags(DEFAULT_ACTIVATION_TAGS),
+        help="Comma-separated CQ tags to boost in the pota profile; default POTA,SOTA",
+    )
     parser.add_argument("--max-age", type=int, default=180, help="Drop callers after this many seconds")
     parser.add_argument("--tx-min", type=int, default=300, help="Lowest TX audio frequency to suggest")
     parser.add_argument(

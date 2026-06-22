@@ -139,11 +139,36 @@ class QueueCoreTests(unittest.TestCase):
     def test_pota_profile_boosts_cq_pota_for_hunters(self):
         state = self.state()
         state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
         state.add_decode(self.decode("CQ POTA N6POTA DM04", snr=-15, audio_hz=1200))
 
         ranked = [cq.call for _, cq in state.ranked_cqs("pota")]
 
         self.assertEqual("N6POTA", ranked[0])
+        self.assertEqual(150.0, wsjtx_queue.activation_message_bonus("CQ POTA N6POTA DM04"))
+
+    def test_activation_boost_is_configurable(self):
+        state = self.state()
+        state.activation_boost = 0
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("CQ K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("CQ POTA N6POTA DM04", snr=-15, audio_hz=1200))
+
+        ranked = [cq.call for _, cq in state.ranked_cqs("pota")]
+
+        self.assertEqual("K7ZZZ", ranked[0])
+
+    def test_activation_tags_are_configurable(self):
+        state = self.state()
+        state.activation_tags = wsjtx_queue.parse_activation_tags("SOTA")
+        state.add_decode(self.decode("CQ POTA N6POTA DM04", snr=20, audio_hz=1200))
+        state.add_decode(self.decode("CQ SOTA N6SOTA DM04", snr=-15, audio_hz=1200))
+
+        ranked = [cq.call for _, cq in state.ranked_cqs("pota")]
+
+        self.assertEqual("N6SOTA", ranked[0])
 
     def test_pota_profile_is_accepted_by_parser(self):
         parser = wsjtx_queue.build_parser({"call": "AK6IM", "grid": "CM87um"})
@@ -231,6 +256,10 @@ class QueueCoreTests(unittest.TestCase):
                     "arrl-digital",
                     "--ports",
                     "2237,2238,2240",
+                    "--activation-boost",
+                    "275",
+                    "--activation-tags",
+                    "POTA,SOTA,WWFF",
                     "--control",
                 ]
             )
@@ -243,6 +272,8 @@ class QueueCoreTests(unittest.TestCase):
         self.assertEqual("CM87UM", defaults["grid"])
         self.assertEqual("arrl-digital", defaults["profile"])
         self.assertEqual([2237, 2238, 2240], defaults["ports"])
+        self.assertEqual(275.0, defaults["activation_boost"])
+        self.assertEqual({"POTA", "SOTA", "WWFF"}, defaults["activation_tags"])
         self.assertTrue(defaults["control"])
 
     def test_save_config_preserves_defaults_and_applies_overrides(self):

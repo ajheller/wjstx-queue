@@ -221,6 +221,9 @@ ports = 2237,2238
 profile = ses
 complete_on = log-or-73
 wanted = wanted.txt
+wanted_boost = 1000
+activation_boost = 150
+activation_tags = POTA,SOTA
 
 [tx]
 max = 2600
@@ -338,7 +341,8 @@ Press these keys while the UI is running:
 - `3`: `field-day` - favors quick/easy contacts: stronger SNR, reasonable
   audio frequency, and low time offset.
 - `4`: `pota` - favors fresh, workable callers with a modest distance boost.
-  In CQ/QRZ view, `CQ POTA` stations are boosted for hunters.
+  In CQ/QRZ view, activation CQs such as `CQ POTA` and `CQ SOTA` are strongly
+  boosted for hunters.
 - `v`: cycle between caller queue, CQ/QRZ list, both lists, and worked list.
 - `Up` / `Down`: select a CQ/QRZ row. Selection follows the callsign when rows
   re-rank.
@@ -393,8 +397,13 @@ For POTA hunting, start in the CQ/QRZ list:
 wsjtx-queue --call AK6IM --grid CM87um --profile pota --view cqs
 ```
 
-The `pota` profile boosts `CQ POTA` rows in CQ/QRZ view while still favoring
-fresh, workable callers in the normal queue.
+The `pota` profile strongly boosts activation CQs in CQ/QRZ view while still
+favoring fresh, workable callers in the normal queue. By default, `CQ POTA` and
+`CQ SOTA` rows get `--activation-boost 150`. Use `--activation-tags
+POTA,SOTA,WWFF,IOTA` to change which CQ tags are boosted. Raise
+`--activation-boost` if you want activation CQs to dominate the hunting list
+more aggressively, or lower it if you want ordinary CQ ranking factors to matter
+more.
 
 ## Wanted Calls
 
