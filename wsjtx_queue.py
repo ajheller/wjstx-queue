@@ -749,10 +749,22 @@ class QueueState:
                 )
             )
 
-        candidates.sort(key=lambda candidate: (candidate.score, candidate.clearance or 9999), reverse=True)
+        preferred = [
+            candidate
+            for candidate in candidates
+            if candidate.clearance is None or candidate.clearance >= self.tx_guard_hz
+        ]
+        candidates_to_rank = preferred or candidates
+        candidates_to_rank.sort(
+            key=lambda candidate: (
+                candidate.score,
+                candidate.clearance if candidate.clearance is not None else 9999,
+            ),
+            reverse=True,
+        )
         chosen = []
         min_spacing = max(self.tx_guard_hz, self.tx_step_hz * 3)
-        for candidate in candidates:
+        for candidate in candidates_to_rank:
             if all(abs(candidate.hz - other.hz) >= min_spacing for other in chosen):
                 chosen.append(candidate)
                 if len(chosen) >= limit:
@@ -1164,17 +1176,21 @@ def render(
     if state.last_error:
         stdscr.addnstr(3, 0, state.last_error, width - 1, curses.A_REVERSE)
 
-    tx_hz, clearance, occupied_count = state.suggested_tx()
-    if tx_hz is None:
+    target_call, target_hz = tx_bias_target(state, profile)
+    tx_candidates = state.tx_candidates(target_hz, target_call)
+    tx_candidate = tx_candidates[0] if tx_candidates else None
+    if tx_candidate is None:
         tx_line = "TX suggestion: unavailable; check --tx-min/--tx-max"
-    elif clearance is None:
-        tx_line = f"TX suggestion: {tx_hz} Hz  no recent decodes in {state.tx_min_hz}-{state.tx_max_hz} Hz"
+    elif tx_candidate.clearance is None:
+        tx_line = f"TX suggestion: {tx_candidate.hz} Hz  no recent decodes in {state.tx_min_hz}-{state.tx_max_hz} Hz"
     else:
-        status = "clear" if clearance >= state.tx_guard_hz else "tight"
+        status = "clear" if tx_candidate.clearance >= state.tx_guard_hz else "tight"
         tx_line = (
-            f"TX suggestion: {tx_hz} Hz  nearest decode {clearance} Hz  "
-            f"{status}  window {state.tx_window}s  seen {occupied_count}"
+            f"TX suggestion: {tx_candidate.hz} Hz  nearest decode {tx_candidate.clearance} Hz  "
+            f"{status}  window {state.tx_window}s  seen {tx_candidate.occupied_count}"
         )
+    if tx_candidate and tx_candidate.target_call and tx_candidate.target_delta is not None:
+        tx_line += f"  target {tx_candidate.target_call} d{tx_candidate.target_delta}"
     stdscr.addnstr(4, 0, tx_line, width - 1, curses.A_BOLD)
 
     y = 5
@@ -1233,7 +1249,6 @@ def render(
             y += 1
 
     if view == "tx" and y < height - 2:
-        target_call, target_hz = tx_bias_target(state, profile)
         if target_call and target_hz is not None:
             target_line = f"Target bias: near {target_call} at {target_hz} Hz"
         else:
@@ -1242,11 +1257,10 @@ def render(
         y += 1
         if y < height - 2:
             y = render_tx_header(stdscr, y, width, "TX Frequency Candidates")
-        candidates = state.tx_candidates(target_hz, target_call)
-        if not candidates and y < height - 2:
+        if not tx_candidates and y < height - 2:
             stdscr.addnstr(y, 0, "No TX candidates; check --tx-min/--tx-max.", width - 1, curses.A_REVERSE)
             y += 1
-        for idx, candidate in enumerate(candidates, start=1):
+        for idx, candidate in enumerate(tx_candidates, start=1):
             if y >= height - 2:
                 break
             attr = curses.A_BOLD if idx == 1 else curses.A_NORMAL
@@ -1267,15 +1281,17 @@ def render(
     stdscr.refresh()
 
 
-def send_suggested_rx_df(sock: socket.socket, state: QueueState, control_enabled: bool) -> None:
+def send_suggested_rx_df(sock: socket.socket, state: QueueState, profile: str, control_enabled: bool) -> None:
     if not control_enabled:
         state.set_control_message("control disabled; restart with --control")
         return
 
-    tx_hz, _, _ = state.suggested_tx()
-    if tx_hz is None:
+    target_call, target_hz = tx_bias_target(state, profile)
+    candidates = state.tx_candidates(target_hz, target_call, limit=1)
+    if not candidates:
         state.set_control_message("control not sent; no suggested frequency")
         return
+    tx_hz = candidates[0].hz
     if not state.client_id:
         state.set_control_message("control not sent; no WSJT-X client id yet")
         return
@@ -1371,7 +1387,7 @@ def handle_key(
     elif key == curses.KEY_DOWN and view in {"cqs", "both"}:
         state.move_cq_selection(profile, 1)
     elif key in (ord("t"), ord("T")):
-        send_suggested_rx_df(sock, state, control_enabled)
+        send_suggested_rx_df(sock, state, profile, control_enabled)
     elif key in (curses.KEY_ENTER, 10, 13):
         send_top_cq_dx(sock, state, profile, control_enabled)
     elif key in (ord("c"), ord("C")):

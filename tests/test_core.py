@@ -198,6 +198,17 @@ class QueueCoreTests(unittest.TestCase):
         self.assertLessEqual(candidates[0].target_delta, state.tx_guard_hz + state.tx_step_hz)
         self.assertEqual("K7ZZZ", candidates[0].target_call)
 
+    def test_tx_candidates_do_not_rank_occupied_target_first(self):
+        state = self.state()
+        state.add_decode(self.decode("CQ DX K7ZZZ CN87", audio_hz=1500))
+        state.add_decode(self.decode("CQ W1AW FN31", audio_hz=1000))
+        state.add_decode(self.decode("CQ K6C CM87", audio_hz=2100))
+
+        candidates = state.tx_candidates(target_hz=1500, target_call="K7ZZZ", limit=10)
+
+        self.assertGreaterEqual(candidates[0].clearance, state.tx_guard_hz)
+        self.assertNotIn(1500, [candidate.hz for candidate in candidates])
+
     def test_tx_candidates_without_decodes_use_mid_passband(self):
         state = self.state()
 
