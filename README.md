@@ -286,50 +286,6 @@ GridTracker configurations may pass control packets back to WSJT-X, but treat
 that as an advanced choice. For club use, keeping the queue passive is less
 surprising and leaves GridTracker as the control-capable app.
 
-## UDP Hub
-
-`wsjtx-udp-hub` is a small companion router for running multiple WSJT-X UDP
-tools at once. It forwards packets from WSJT-X to named clients. Clients marked
-`readonly` can only receive packets. Clients marked `control` can also send
-control packets back to WSJT-X through the hub.
-
-For normal club setups, keep `wsjtx-queue` listen-only and leave GridTracker
-as the control-capable app. Most of the queue tool's useful behavior is passive,
-and this avoids surprising operators who already rely on GridTracker control.
-
-Example topology:
-
-```text
-WSJT-X -> 127.0.0.1:2237 wsjtx-udp-hub
-hub    -> 127.0.0.1:2238 GridTracker
-hub    -> 127.0.0.1:2240 wsjtx-queue
-```
-
-Run the hub:
-
-```sh
-wsjtx-udp-hub \
-  --listen 127.0.0.1:2237 \
-  --client gridtracker=127.0.0.1:2238:control \
-  --client queue=127.0.0.1:2240:readonly
-```
-
-Run the queue against the hub:
-
-```sh
-wsjtx-queue --call AK6IM --grid CM87um --port 2240
-```
-
-Configure WSJT-X UDP to send to `127.0.0.1:2237`. Configure GridTracker to use
-`127.0.0.1:2238`. The queue listens on `127.0.0.1:2240`.
-
-If you intentionally want the queue tool to set WSJT-X fields with `T` or
-`Enter`, start the queue with `--control` and mark the queue client as
-`control` in the hub. In that setup, make other clients `readonly` unless you
-really want more than one app sending commands to WSJT-X.
-
-For protocol details, see [WSJT-X UDP Protocol Notes](docs/wsjtx-udp-protocol.md).
-
 ## Profiles
 
 Press these keys while the UI is running:
@@ -470,6 +426,90 @@ the last `120` seconds. Useful options:
 - Distance scoring needs your grid and a caller grid in the decoded message.
 - The parser currently uses WSJT-X decode, clear, Logged ADIF, and QSO Logged
   UDP packets.
+
+## UDP Hub
+
+`wsjtx-udp-hub` is a small companion router for running multiple WSJT-X UDP
+tools at once. It forwards packets from WSJT-X to named clients. Clients marked
+`readonly` can only receive packets. Clients marked `control` can also send
+control packets back to WSJT-X through the hub.
+
+For normal club setups, keep `wsjtx-queue` listen-only and leave GridTracker
+as the control-capable app. Most of the queue tool's useful behavior is passive,
+and this avoids surprising operators who already rely on GridTracker control.
+
+Example topology:
+
+```text
+WSJT-X -> 127.0.0.1:2237 wsjtx-udp-hub
+hub    -> 127.0.0.1:2238 GridTracker
+hub    -> 127.0.0.1:2240 wsjtx-queue
+```
+
+Run the hub:
+
+```sh
+wsjtx-udp-hub \
+  --listen 127.0.0.1:2237 \
+  --client gridtracker=127.0.0.1:2238:control \
+  --client queue=127.0.0.1:2240:readonly
+```
+
+Run the queue against the hub:
+
+```sh
+wsjtx-queue --call AK6IM --grid CM87um --port 2240
+```
+
+Configure WSJT-X UDP to send to `127.0.0.1:2237`. Configure GridTracker to use
+`127.0.0.1:2238`. The queue listens on `127.0.0.1:2240`.
+
+### Multiple Queue Windows
+
+Because `wsjtx-queue` is listen-only by default, the hub can feed several queue
+windows from the same WSJT-X UDP stream. This is useful when you want separate
+views for callers, CQs, POTA/SOTA hunting, or wanted-call chasing.
+
+Example topology:
+
+```text
+WSJT-X -> 127.0.0.1:2237 wsjtx-udp-hub
+hub    -> 127.0.0.1:2238 GridTracker       control
+hub    -> 127.0.0.1:2240 callers window    readonly
+hub    -> 127.0.0.1:2241 activation CQs    readonly
+hub    -> 127.0.0.1:2242 wanted CQs        readonly
+```
+
+Run the hub:
+
+```sh
+wsjtx-udp-hub \
+  --listen 127.0.0.1:2237 \
+  --client gridtracker=127.0.0.1:2238:control \
+  --client callers=127.0.0.1:2240:readonly \
+  --client activations=127.0.0.1:2241:readonly \
+  --client wanted=127.0.0.1:2242:readonly
+```
+
+Then start separate queue windows:
+
+```sh
+wsjtx-queue --call AK6IM --grid CM87um --port 2240 --view queue --profile ses
+wsjtx-queue --call AK6IM --grid CM87um --port 2241 --view cqs --profile pota
+wsjtx-queue --call AK6IM --grid CM87um --port 2242 --view cqs --wanted wanted.txt
+```
+
+Leave these extra queue windows readonly unless you intentionally want one of
+them to send WSJT-X control packets. If more than one client is marked
+`control`, WSJT-X receives commands from all of them in arrival order, so the
+last command wins.
+
+If you intentionally want the queue tool to set WSJT-X fields with `T` or
+`Enter`, start the queue with `--control` and mark the queue client as
+`control` in the hub. In that setup, make other clients `readonly` unless you
+really want more than one app sending commands to WSJT-X.
+
+For protocol details, see [WSJT-X UDP Protocol Notes](docs/wsjtx-udp-protocol.md).
 
 ## License
 
