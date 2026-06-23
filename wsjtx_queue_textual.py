@@ -9,6 +9,7 @@ import pathlib
 import socket
 import sys
 import time
+from datetime import UTC, datetime
 
 import wsjtx_queue as core
 
@@ -112,7 +113,7 @@ class QueueTextualApp(App):
         self.view = args.view
 
     def compose(self) -> ComposeResult:
-        yield Header(show_clock=True)
+        yield Header(show_clock=False)
         with Vertical():
             yield Static(id="status")
             yield Static(id="summary")
@@ -168,11 +169,12 @@ class QueueTextualApp(App):
         now = time.time()
         port_text = "demo" if self.bound_port is None else f"{self.args.host}:{self.bound_port}"
         status_age = "-" if not self.state.last_packet else f"{now - self.state.last_packet:4.1f}s"
+        utc_time = datetime.now(UTC).strftime("%H:%M:%SZ")
         control = "control" if self.args.control else "listen-only"
         self.query_one("#status", Static).update(
             f"[b]WSJT-X Queue[/b]  call={self.state.my_call}  grid={self.state.my_grid or '-'}  "
             f"profile=[b]{self.profile}[/b]  view=[b]{self.view}[/b]  udp={port_text}  "
-            f"last={status_age}  {control}"
+            f"last={status_age}  UTC {utc_time}  {control}"
         )
         self.query_one("#summary", Static).update(
             f"Packets {self.state.packet_count}  Decodes {self.state.decode_count}  "
