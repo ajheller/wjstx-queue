@@ -80,14 +80,14 @@ Textual. It is a prototype, not the default club-member setup.
 From a source checkout:
 
 ```sh
-python3 -m pip install -r requirements-textual.txt
-python3 wsjtx_queue_textual.py --call AK6IM --grid CM87um --demo
+make textual-venv
+.venv-textual/bin/python wsjtx_queue_textual.py --call AK6IM --grid CM87um --demo
 ```
 
 For live UDP testing:
 
 ```sh
-python3 wsjtx_queue_textual.py --call AK6IM --grid CM87um --profile ses
+.venv-textual/bin/python wsjtx_queue_textual.py --call AK6IM --grid CM87um --profile ses
 ```
 
 The Textual version uses the same ranking, completion, TX suggestion, config,
