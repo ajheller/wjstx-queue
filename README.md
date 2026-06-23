@@ -12,8 +12,8 @@ GridTracker and turns recent decodes into operator-focused lists:
 - wanted-call highlighting for special events, museum ships, W1AW portable
   operations, contest targets, and other chase lists
 - TX audio-frequency suggestions based on holes among recent decodes
-- optional WSJT-X control hotkeys for setting Rx DF or preparing a selected CQ
-  station
+- optional WSJT-X control hotkeys for setting Rx DF or preparing a selected
+  caller or CQ station
 
 Directed messages such as:
 
@@ -307,10 +307,10 @@ Press these keys while the UI is running:
   boosted for hunters.
 - `v`: cycle between caller queue, CQ/QRZ list, both lists, worked list, and
   TX frequency candidates.
-- `Up` / `Down`: select a CQ/QRZ row. Selection follows the callsign when rows
-  re-rank.
+- `Up` / `Down`: select a caller row in queue view or a CQ/QRZ row in CQ views.
+  Selection follows the callsign when rows re-rank.
 - `Enter`: when started with `--control`, set WSJT-X `DX Call`, `DX Grid`,
-  `Rx DF`, and `Generate Messages` from the selected CQ/QRZ station.
+  `Rx DF`, and `Generate Messages` from the selected caller or CQ/QRZ station.
 - `T`: when started with `--control`, sends a WSJT-X `Configure` packet that
   sets `Rx DF` to the current suggested audio frequency. This does not directly
   set `Tx DF`; use WSJT-X's lock/coupling options if you want Tx to follow Rx.

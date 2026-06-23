@@ -368,7 +368,23 @@ class QueueCoreTests(unittest.TestCase):
 
         self.assertEqual("K7ZZZ", state.selected_cq("field-day").call)
 
-    def test_send_cq_dx_uses_selected_station(self):
+    def test_caller_selection_moves_and_clamps(self):
+        state = self.state()
+        state.add_decode(self.decode("AK6IM K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("AK6IM 7M2VAP QM05", snr=-17, audio_hz=1200))
+
+        self.assertEqual("K7ZZZ", state.selected_caller("ses").call)
+
+        state.move_caller_selection("ses", 1)
+        self.assertEqual("7M2VAP", state.selected_caller("ses").call)
+
+        state.move_caller_selection("ses", 99)
+        self.assertEqual("7M2VAP", state.selected_caller("ses").call)
+
+        state.move_caller_selection("ses", -99)
+        self.assertEqual("K7ZZZ", state.selected_caller("ses").call)
+
+    def test_send_selected_dx_uses_selected_cq_station(self):
         state = self.state()
         state.client_id = "WSJT-X"
         state.last_peer = ("127.0.0.1", 45185)
@@ -377,7 +393,7 @@ class QueueCoreTests(unittest.TestCase):
         state.move_cq_selection("arrl-digital", 1)
         sock = FakeSocket()
 
-        wsjtx_queue.send_top_cq_dx(sock, state, "arrl-digital", True)
+        wsjtx_queue.send_selected_dx(sock, state, "arrl-digital", "cqs", True)
 
         self.assertEqual(("127.0.0.1", 45185), sock.sent[0][1])
         reader = wsjtx_queue.Reader(sock.sent[0][0])
@@ -394,6 +410,66 @@ class QueueCoreTests(unittest.TestCase):
         self.assertEqual("K7ZZZ", reader.utf8())
         self.assertEqual("CN87", reader.utf8())
         self.assertTrue(reader.bool())
+
+    def test_send_selected_dx_uses_selected_queue_caller(self):
+        state = self.state()
+        state.client_id = "WSJT-X"
+        state.last_peer = ("127.0.0.1", 45185)
+        state.add_decode(self.decode("AK6IM K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("AK6IM 7M2VAP QM05", snr=-17, audio_hz=1200))
+        state.move_caller_selection("ses", 1)
+        sock = FakeSocket()
+
+        wsjtx_queue.send_selected_dx(sock, state, "ses", "queue", True)
+
+        self.assertEqual(("127.0.0.1", 45185), sock.sent[0][1])
+        reader = wsjtx_queue.Reader(sock.sent[0][0])
+        self.assertEqual(wsjtx_queue.MAGIC, reader.u32())
+        self.assertEqual(wsjtx_queue.SCHEMA, reader.u32())
+        self.assertEqual(wsjtx_queue.TYPE_CONFIGURE, reader.u32())
+        self.assertEqual("WSJT-X", reader.utf8())
+        self.assertEqual("", reader.utf8())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual("", reader.utf8())
+        self.assertFalse(reader.bool())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual(1200, reader.u32())
+        self.assertEqual("7M2VAP", reader.utf8())
+        self.assertEqual("QM05", reader.utf8())
+        self.assertTrue(reader.bool())
+
+    def test_queue_key_selection_and_enter_send_selected_caller(self):
+        state = self.state()
+        state.client_id = "WSJT-X"
+        state.last_peer = ("127.0.0.1", 45185)
+        state.add_decode(self.decode("AK6IM K7ZZZ CN87", snr=20, audio_hz=900))
+        state.add_decode(self.decode("AK6IM 7M2VAP QM05", snr=-17, audio_hz=1200))
+        sock = FakeSocket()
+
+        profile, view, keep_running = wsjtx_queue.handle_key(
+            wsjtx_queue.curses.KEY_DOWN,
+            sock,
+            state,
+            "ses",
+            "queue",
+            True,
+        )
+        self.assertEqual(("ses", "queue", True), (profile, view, keep_running))
+
+        wsjtx_queue.handle_key(10, sock, state, profile, view, True)
+
+        reader = wsjtx_queue.Reader(sock.sent[0][0])
+        self.assertEqual(wsjtx_queue.MAGIC, reader.u32())
+        self.assertEqual(wsjtx_queue.SCHEMA, reader.u32())
+        self.assertEqual(wsjtx_queue.TYPE_CONFIGURE, reader.u32())
+        self.assertEqual("WSJT-X", reader.utf8())
+        self.assertEqual("", reader.utf8())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual("", reader.utf8())
+        self.assertFalse(reader.bool())
+        self.assertEqual(wsjtx_queue.MAX_U32, reader.u32())
+        self.assertEqual(1200, reader.u32())
+        self.assertEqual("7M2VAP", reader.utf8())
 
     def test_configure_packet_sets_only_rx_df(self):
         packet = wsjtx_queue.configure_rx_df_packet("WSJT-X", 2240)

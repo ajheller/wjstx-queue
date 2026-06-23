@@ -277,8 +277,8 @@ def configure_rx_df_packet(client_id: str, rx_df: int) -> bytes:
     return configure_packet(client_id, rx_df=rx_df)
 
 
-def configure_dx_packet(client_id: str, station: CqStation) -> bytes:
-    """Build a WSJT-X Configure packet that sets DX fields for a CQ station."""
+def configure_dx_packet(client_id: str, station: Caller | CqStation) -> bytes:
+    """Build a WSJT-X Configure packet that sets DX fields for a station."""
     return configure_packet(
         client_id,
         rx_df=station.audio_hz,
@@ -527,6 +527,8 @@ class QueueState:
         self.activation_tags = activation_tags
         self.callers: dict[str, Caller] = {}
         self.cqs: dict[str, CqStation] = {}
+        self.selected_caller_call = ""
+        self.selected_caller_index = 0
         self.selected_cq_call = ""
         self.selected_cq_index = 0
         self.worked: dict[str, WorkedStation] = {}
@@ -831,6 +833,38 @@ class QueueState:
         rows = [(scorer(c, now) + (self.wanted_boost if self.is_wanted(c.call) else 0), c) for c in self.cqs.values()]
         rows.sort(key=lambda item: item[0], reverse=True)
         return rows
+
+    def sync_caller_selection(self, rows: list[tuple[float, Caller]]) -> int | None:
+        if not rows:
+            self.selected_caller_call = ""
+            self.selected_caller_index = 0
+            return None
+
+        if self.selected_caller_call:
+            for idx, (_, caller) in enumerate(rows):
+                if caller.call == self.selected_caller_call:
+                    self.selected_caller_index = idx
+                    return idx
+
+        self.selected_caller_index = max(0, min(self.selected_caller_index, len(rows) - 1))
+        self.selected_caller_call = rows[self.selected_caller_index][1].call
+        return self.selected_caller_index
+
+    def move_caller_selection(self, profile: str, delta: int) -> None:
+        rows = self.ranked(profile)
+        selected = self.sync_caller_selection(rows)
+        if selected is None:
+            return
+
+        self.selected_caller_index = max(0, min(selected + delta, len(rows) - 1))
+        self.selected_caller_call = rows[self.selected_caller_index][1].call
+
+    def selected_caller(self, profile: str) -> Caller | None:
+        rows = self.ranked(profile)
+        selected = self.sync_caller_selection(rows)
+        if selected is None:
+            return None
+        return rows[selected][1]
 
     def sync_cq_selection(self, rows: list[tuple[float, CqStation]]) -> int | None:
         if not rows:
@@ -1152,7 +1186,7 @@ def render(
     stdscr.addnstr(
         1,
         0,
-        "Keys: 1 SES  2 ARRL Digital  3 Field Day  4 POTA  v view  Up/Down select CQ  "
+        "Keys: 1 SES  2 ARRL Digital  3 Field Day  4 POTA  v view  Up/Down select row  "
         "Enter set DX  T set Rx DF  c clear  q quit  tx view  ! wanted  * worked",
         width - 1,
         curses.A_DIM,
@@ -1196,10 +1230,12 @@ def render(
     y = 5
     if view in {"queue", "both"}:
         y = render_table_header(stdscr, y, width, "Callers")
-        for idx, (score, caller) in enumerate(state.ranked(profile), start=1):
+        callers = state.ranked(profile)
+        selected_caller_index = state.sync_caller_selection(callers)
+        for idx, (score, caller) in enumerate(callers, start=1):
             if y >= height - 2:
                 break
-            attr = curses.A_BOLD if idx == 1 else curses.A_NORMAL
+            attr = curses.A_REVERSE | curses.A_BOLD if idx - 1 == selected_caller_index else curses.A_NORMAL
             render_station_row(
                 stdscr,
                 y,
@@ -1306,25 +1342,32 @@ def send_suggested_rx_df(sock: socket.socket, state: QueueState, profile: str, c
     )
 
 
-def send_top_cq_dx(sock: socket.socket, state: QueueState, profile: str, control_enabled: bool) -> None:
+def send_selected_dx(
+    sock: socket.socket,
+    state: QueueState,
+    profile: str,
+    view: str,
+    control_enabled: bool,
+) -> None:
     if not control_enabled:
         state.set_control_message("control disabled; restart with --control")
         return
 
-    ranked = state.ranked_cqs(profile)
-    if not ranked:
-        state.set_control_message("control not sent; no CQ/QRZ station available")
+    if view == "queue":
+        station: Caller | CqStation | None = state.selected_caller(profile)
+        station_kind = "caller"
+    else:
+        station = state.selected_cq(profile)
+        station_kind = "CQ/QRZ station"
+
+    if station is None:
+        state.set_control_message(f"control not sent; no {station_kind} available")
         return
     if not state.client_id:
         state.set_control_message("control not sent; no WSJT-X client id yet")
         return
     if not state.last_peer:
         state.set_control_message("control not sent; no WSJT-X peer address yet")
-        return
-
-    station = state.selected_cq(profile)
-    if station is None:
-        state.set_control_message("control not sent; no CQ/QRZ station available")
         return
 
     packet = configure_dx_packet(state.client_id, station)
@@ -1382,6 +1425,10 @@ def handle_key(
         profile = "pota"
     elif key in (ord("v"), ord("V")):
         view = next_view(view)
+    elif key == curses.KEY_UP and view == "queue":
+        state.move_caller_selection(profile, -1)
+    elif key == curses.KEY_DOWN and view == "queue":
+        state.move_caller_selection(profile, 1)
     elif key == curses.KEY_UP and view in {"cqs", "both"}:
         state.move_cq_selection(profile, -1)
     elif key == curses.KEY_DOWN and view in {"cqs", "both"}:
@@ -1389,7 +1436,7 @@ def handle_key(
     elif key in (ord("t"), ord("T")):
         send_suggested_rx_df(sock, state, profile, control_enabled)
     elif key in (curses.KEY_ENTER, 10, 13):
-        send_top_cq_dx(sock, state, profile, control_enabled)
+        send_selected_dx(sock, state, profile, view, control_enabled)
     elif key in (ord("c"), ord("C")):
         state.callers.clear()
         state.cqs.clear()
