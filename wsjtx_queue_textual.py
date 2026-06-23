@@ -16,6 +16,7 @@ import wsjtx_queue as core
 try:
     from rich.text import Text
     from textual.app import App, ComposeResult
+    from textual.binding import Binding
     from textual.containers import Vertical
     from textual.widgets import DataTable, Footer, Header, Static
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised by users without the optional dependency.
@@ -90,10 +91,10 @@ class QueueTextualApp(App):
         ("2", "profile('arrl-digital')", "ARRL Digital"),
         ("3", "profile('field-day')", "Field Day"),
         ("4", "profile('pota')", "POTA"),
-        ("up", "move_selection(-1)", "Up"),
-        ("down", "move_selection(1)", "Down"),
-        ("enter", "set_dx", "Set DX"),
-        ("t", "set_rx_df", "Set Rx DF"),
+        Binding("up", "move_selection(-1)", "Up", priority=True),
+        Binding("down", "move_selection(1)", "Down", priority=True),
+        Binding("enter", "set_dx", "Set DX", priority=True),
+        Binding("t", "set_rx_df", "Set Rx DF", priority=True),
         ("c", "clear", "Clear"),
     ]
 
@@ -269,6 +270,8 @@ class QueueTextualApp(App):
                 f"{age:.0f}",
                 station.message,
             )
+        if selected is not None:
+            table.move_cursor(row=selected, column=0, animate=False)
 
     def render_worked_table(self, table: DataTable, now: float) -> None:
         table.add_columns("#", "Call", "Count", "Age")
