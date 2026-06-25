@@ -35,4 +35,4 @@ hub-demo:
 		--client queue=127.0.0.1:2240:readonly
 
 deploy-sbitx:
-	scp wsjtx_queue.py wsjtx_udp_hub.py wsjtx_queue_textual.py requirements-textual.txt $(SBITX_TARGET)
+	scp Makefile wsjtx_queue.py wsjtx_udp_hub.py wsjtx_queue_textual.py requirements-textual.txt $(SBITX_TARGET)
