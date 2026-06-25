@@ -2,6 +2,7 @@ PYTHON ?= python3
 SBITX_TARGET ?= pi@sbitx.local:~
 TEXTUAL_VENV ?= .venv-textual
 TEXTUAL_PYTHON := $(TEXTUAL_VENV)/bin/python
+TEXTUAL_ENV := PYTHONPATH=
 
 .PHONY: test format format-check demo textual-venv textual-demo textual-run hub-demo deploy-sbitx
 
@@ -19,15 +20,15 @@ demo:
 
 textual-venv:
 	$(PYTHON) -m venv $(TEXTUAL_VENV)
-	$(TEXTUAL_PYTHON) -m pip install --upgrade pip
-	$(TEXTUAL_PYTHON) -m pip install --upgrade --force-reinstall "platformdirs>=4,<5"
-	$(TEXTUAL_PYTHON) -m pip install -r requirements-textual.txt
+	$(TEXTUAL_ENV) $(TEXTUAL_PYTHON) -m pip install --upgrade pip
+	$(TEXTUAL_ENV) $(TEXTUAL_PYTHON) -m pip install --upgrade --force-reinstall "platformdirs>=4,<5" "typing-extensions>=4.4,<5"
+	$(TEXTUAL_ENV) $(TEXTUAL_PYTHON) -m pip install -r requirements-textual.txt
 
 textual-demo: textual-venv
-	$(TEXTUAL_PYTHON) wsjtx_queue_textual.py --call AK6IM --grid CM87um --demo
+	$(TEXTUAL_ENV) $(TEXTUAL_PYTHON) wsjtx_queue_textual.py --call AK6IM --grid CM87um --demo
 
 textual-run: textual-venv
-	$(TEXTUAL_PYTHON) wsjtx_queue_textual.py
+	$(TEXTUAL_ENV) $(TEXTUAL_PYTHON) wsjtx_queue_textual.py
 
 hub-demo:
 	$(PYTHON) wsjtx_udp_hub.py \

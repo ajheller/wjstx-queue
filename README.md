@@ -92,7 +92,9 @@ For live UDP testing:
 
 On Raspberry Pi OS, run the app with `.venv-textual/bin/python` rather than
 plain `python3`. If Textual reports a `platformdirs` import error, rerun
-`make textual-venv` to refresh the venv packages.
+`make textual-venv` to refresh the venv packages. The Make targets clear
+`PYTHONPATH` so system packages from the sBitx software environment do not
+override the venv.
 
 The Textual version uses the same ranking, completion, TX suggestion, config,
 and UDP control code as the regular terminal UI. The point of the branch is to
