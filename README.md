@@ -90,6 +90,10 @@ For live UDP testing:
 .venv-textual/bin/python wsjtx_queue_textual.py --call AK6IM --grid CM87um --profile ses
 ```
 
+On Raspberry Pi OS, run the app with `.venv-textual/bin/python` rather than
+plain `python3`. If Textual reports a `platformdirs` import error, rerun
+`make textual-venv` to refresh the venv packages.
+
 The Textual version uses the same ranking, completion, TX suggestion, config,
 and UDP control code as the regular terminal UI. The point of the branch is to
 evaluate whether color, richer table styling, and a footer key bar make the

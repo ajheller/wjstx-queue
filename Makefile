@@ -20,6 +20,7 @@ demo:
 textual-venv:
 	$(PYTHON) -m venv $(TEXTUAL_VENV)
 	$(TEXTUAL_PYTHON) -m pip install --upgrade pip
+	$(TEXTUAL_PYTHON) -m pip install --upgrade --force-reinstall "platformdirs>=4,<5"
 	$(TEXTUAL_PYTHON) -m pip install -r requirements-textual.txt
 
 textual-demo: textual-venv
