@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 
 import wsjtx_queue as core
 
+MixedStationRow = tuple[str, float, core.Caller | core.CqStation]
+
 try:
     from rich.text import Text
     from textual.app import App, ComposeResult
@@ -33,6 +35,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised by users with
 
 class QueueTextualApp(App):
     """Color Textual front-end that reuses the wsjtx-queue core."""
+
+    TITLE = "WSJT-X Queue"
+    SUB_TITLE = "Textual"
 
     CSS = """
     Screen {
@@ -112,6 +117,9 @@ class QueueTextualApp(App):
         self.bound_port = bound_port
         self.profile = args.profile
         self.view = args.view
+        self.mixed_selected_kind = ""
+        self.mixed_selected_call = ""
+        self.mixed_selected_index = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=False)
@@ -143,13 +151,21 @@ class QueueTextualApp(App):
     def action_move_selection(self, delta: int) -> None:
         if self.view == "queue":
             self.state.move_caller_selection(self.profile, delta)
-        elif self.view in {"cqs", "both"}:
+        elif self.view == "cqs":
             self.state.move_cq_selection(self.profile, delta)
+        elif self.view == "both":
+            self.move_mixed_selection(delta)
         self.refresh_screen()
 
     def action_set_dx(self) -> None:
         if self.sock is None:
             self.state.set_control_message("demo mode; control not sent")
+        elif self.view == "both":
+            station = self.selected_mixed_station()
+            if station is None:
+                self.state.set_control_message("control not sent; no station available")
+            else:
+                self.send_station_dx(station)
         else:
             core.send_selected_dx(self.sock, self.state, self.profile, self.view, self.args.control)
         self.refresh_screen()
@@ -186,7 +202,11 @@ class QueueTextualApp(App):
         self.render_table(now)
 
     def tx_summary(self) -> str:
-        target_call, target_hz = core.tx_bias_target(self.state, self.profile)
+        selected = self.selected_station_for_view()
+        if selected is None:
+            target_call, target_hz = core.tx_bias_target(self.state, self.profile)
+        else:
+            target_call, target_hz = selected.call, selected.audio_hz
         candidates = self.state.tx_candidates(target_hz, target_call, limit=1)
         if not candidates:
             return "[b yellow]TX suggestion:[/b yellow] unavailable"
@@ -216,38 +236,112 @@ class QueueTextualApp(App):
         elif self.view == "cqs":
             self.render_station_table(table, now, "CQs / QRZs", self.state.ranked_cqs(self.profile), "cq")
         elif self.view == "both":
-            rows: list[tuple[str, float, core.Caller | core.CqStation]] = [
-                ("Call", score, caller) for score, caller in self.state.ranked(self.profile)
-            ]
-            rows.extend(("CQ", score, cq) for score, cq in self.state.ranked_cqs(self.profile))
+            rows = self.mixed_rows()
             self.render_station_table(table, now, "Callers and CQs", rows, "mixed")
         else:
             self.render_station_table(table, now, "Callers", self.state.ranked(self.profile), "caller")
+
+    def mixed_rows(self) -> list[MixedStationRow]:
+        rows: list[MixedStationRow] = [("Call", score, caller) for score, caller in self.state.ranked(self.profile)]
+        rows.extend(("CQ", score, cq) for score, cq in self.state.ranked_cqs(self.profile))
+        return rows
+
+    def sync_mixed_selection(self, rows: list[MixedStationRow]) -> int | None:
+        if not rows:
+            self.mixed_selected_kind = ""
+            self.mixed_selected_call = ""
+            self.mixed_selected_index = 0
+            return None
+
+        if self.mixed_selected_call:
+            for idx, (kind, _, station) in enumerate(rows):
+                if kind == self.mixed_selected_kind and station.call == self.mixed_selected_call:
+                    self.mixed_selected_index = idx
+                    return idx
+
+        self.mixed_selected_index = max(0, min(self.mixed_selected_index, len(rows) - 1))
+        self.mixed_selected_kind, _, station = rows[self.mixed_selected_index]
+        self.mixed_selected_call = station.call
+        return self.mixed_selected_index
+
+    def move_mixed_selection(self, delta: int) -> None:
+        rows = self.mixed_rows()
+        selected = self.sync_mixed_selection(rows)
+        if selected is None:
+            return
+
+        self.mixed_selected_index = max(0, min(selected + delta, len(rows) - 1))
+        self.mixed_selected_kind, _, station = rows[self.mixed_selected_index]
+        self.mixed_selected_call = station.call
+
+    def selected_mixed_station(self) -> core.Caller | core.CqStation | None:
+        rows = self.mixed_rows()
+        selected = self.sync_mixed_selection(rows)
+        if selected is None:
+            return None
+        return rows[selected][2]
+
+    def selected_station_for_view(self) -> core.Caller | core.CqStation | None:
+        if self.view == "queue":
+            return self.state.selected_caller(self.profile)
+        if self.view == "cqs":
+            return self.state.selected_cq(self.profile)
+        if self.view == "both":
+            return self.selected_mixed_station()
+        return None
+
+    def send_station_dx(self, station: core.Caller | core.CqStation) -> None:
+        if not self.args.control:
+            self.state.set_control_message("control disabled; restart with --control")
+            return
+        if not self.state.client_id:
+            self.state.set_control_message("control not sent; no WSJT-X client id yet")
+            return
+        if not self.state.last_peer:
+            self.state.set_control_message("control not sent; no WSJT-X peer address yet")
+            return
+
+        packet = core.configure_dx_packet(self.state.client_id, station)
+        assert self.sock is not None
+        self.sock.sendto(packet, self.state.last_peer)
+        grid = f" {station.grid}" if station.grid else ""
+        self.state.set_control_message(
+            f"sent DX {station.call}{grid} at {station.audio_hz} Hz to {self.state.client_id}"
+        )
 
     def render_station_table(
         self,
         table: DataTable,
         now: float,
         title: str,
-        rows: list[tuple[float, core.Caller | core.CqStation]] | list[tuple[str, float, core.Caller | core.CqStation]],
+        rows: list[tuple[float, core.Caller | core.CqStation]] | list[MixedStationRow],
         row_kind: str,
     ) -> None:
-        table.add_columns("Sel", "#", "Kind", "Score", "Call", "Grid", "km", "SNR", "DT", "Hz", "Heard", "Age", title)
+        table.add_column("#", width=3)
+        table.add_column("Kind", width=5)
+        table.add_column("Score", width=7)
+        table.add_column("Call", width=12)
+        table.add_column("Grid", width=6)
+        table.add_column("km", width=6)
+        table.add_column("SNR", width=4)
+        table.add_column("DT", width=5)
+        table.add_column("Hz", width=5)
+        table.add_column("Heard", width=5)
+        table.add_column("Age", width=5)
+        table.add_column(title)
         if row_kind == "caller":
             selected = self.state.sync_caller_selection(rows)  # type: ignore[arg-type]
         elif row_kind == "cq":
             selected = self.state.sync_cq_selection(rows)  # type: ignore[arg-type]
         else:
-            selected = None
+            selected = self.sync_mixed_selection(rows)  # type: ignore[arg-type]
 
         for idx, raw_row in enumerate(rows, start=1):
             if row_kind == "mixed":
                 kind, score, station = raw_row  # type: ignore[misc]
-                sel = " "
             else:
                 score, station = raw_row  # type: ignore[misc]
                 kind = "Call" if row_kind == "caller" else "CQ"
-                sel = ">" if selected == idx - 1 else " "
             age = now - station.last_seen
             dist = "-" if station.distance_km is None else f"{station.distance_km:.0f}"
             call_style = "bold bright_green"
@@ -256,7 +350,6 @@ class QueueTextualApp(App):
             elif self.state.is_worked(station.call):
                 call_style = "dim cyan"
             table.add_row(
-                Text(sel, style="bold cyan"),
                 str(idx),
                 kind,
                 f"{score:.1f}",

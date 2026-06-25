@@ -101,6 +101,10 @@ and UDP control code as the regular terminal UI. The point of the branch is to
 evaluate whether color, richer table styling, and a footer key bar make the
 operator workflow clearer enough to justify the extra dependency.
 
+In Textual `both` view, callers and CQ/QRZ stations are shown as one mixed
+selectable list. `Up` and `Down` move through the visible rows, and `Enter`
+uses the highlighted row when `--control` is enabled.
+
 GitHub Actions builds standalone Windows, macOS, and Linux artifacts for
 `wsjtx_queue.py` and `wsjtx_udp_hub.py` on each push, pull request, and manual
 workflow run. Version tags such as `v0.1.0` also publish a GitHub Release with
