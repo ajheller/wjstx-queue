@@ -66,6 +66,7 @@ jobs:
           Copy-Item README.md package/
           Copy-Item LICENSE package/
           Copy-Item docs package/docs -Recurse
+          Copy-Item wanted package/wanted -Recurse
           Compress-Archive -Path package/* -DestinationPath wsjtx-queue-${{ github.ref_name }}-${{ matrix.platform }}.zip
       - name: Package Unix release asset
         if: startsWith(github.ref, 'refs/tags/v') && matrix.platform != 'windows'
@@ -80,6 +81,7 @@ jobs:
           fi
           cp README.md LICENSE package/
           cp -R docs package/docs
+          cp -R wanted package/wanted
           tar -czf wsjtx-queue-${{ github.ref_name }}-${{ matrix.platform }}.tar.gz -C package .
       - uses: actions/upload-artifact@v4
         with:
@@ -91,6 +93,7 @@ jobs:
             README.md
             LICENSE
             docs/
+            wanted/
             launchers/
 
   release:
@@ -114,4 +117,4 @@ jobs:
             artifacts/wsjtx-queue-${{ github.ref_name }}-macos.tar.gz \
             artifacts/wsjtx-queue-${{ github.ref_name }}-linux.tar.gz \
             --title "wsjtx-queue ${{ github.ref_name }}" \
-            --notes "Standalone builds for Windows, macOS, and Linux. Each archive includes wsjtx-queue, wsjtx-udp-hub, README.md, LICENSE, docs/, and a simple launcher."
+            --notes "Standalone builds for Windows, macOS, and Linux. Each archive includes wsjtx-queue, wsjtx-udp-hub, README.md, LICENSE, docs/, wanted/, and a simple launcher."

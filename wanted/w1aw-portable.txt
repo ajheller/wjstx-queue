@@ -1,0 +1,7 @@
+# W1AW portable / W1AW/P chasing
+# Source: https://www.arrl.org/w1aw
+#
+# wsjtx-queue base-call matching means W1AW matches W1AW/0, W1AW/6,
+# W1AW/KL7, W1AW/P, and similar portable forms.
+
+W1AW ARRL Hiram Percy Maxim Memorial Station and portable forms
