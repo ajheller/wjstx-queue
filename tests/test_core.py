@@ -117,6 +117,15 @@ class QueueCoreTests(unittest.TestCase):
 
             self.assertEqual({"NJ2BB", "W1AW/6"}, wsjtx_queue.load_wanted_calls(handle.name))
 
+    def test_checked_in_wanted_files_are_parseable(self):
+        wanted_files = sorted((ROOT / "wanted").glob("*.txt"))
+        self.assertGreaterEqual(len(wanted_files), 1)
+
+        loaded = {path.name: wsjtx_queue.load_wanted_calls(str(path)) for path in wanted_files}
+
+        for path_name, calls in loaded.items():
+            self.assertGreaterEqual(len(calls), 1, path_name)
+
     def test_wanted_calls_mark_base_and_exact_portable_matches(self):
         state = self.state()
         state.wanted_calls = {"W1AW", "K6C/7"}

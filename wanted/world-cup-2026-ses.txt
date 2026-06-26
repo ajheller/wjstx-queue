@@ -1,0 +1,23 @@
+# World Cup 2026 Special Event Stations
+# Source: https://www.wc2026ses.org/
+#
+# Note: the official site was behind Cloudflare when this file was added, so
+# verify this list against the site before serious chasing.
+
+W6S San Francisco Bay Area host-city SES
+W4C Atlanta
+W1C Boston
+W5C/D Dallas
+W5C/H Houston
+K0C Kansas City
+W6C Los Angeles
+K4C Miami
+W2C New York/New Jersey
+WM3PEN Philadelphia
+W7C Seattle
+VC3F Toronto
+VB7F Vancouver
+4A1GDL Guadalajara
+4A1CMX Mexico City
+4A1MTY Monterrey
+WC5WC Bonus Station

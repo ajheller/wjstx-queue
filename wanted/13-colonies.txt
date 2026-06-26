@@ -1,0 +1,22 @@
+# 13 Colonies Special Event
+# Source: https://www.13colonies.us/
+#
+# Only the first token on each line is used by wsjtx-queue.
+
+K2A New York
+K2B Virginia
+K2C Rhode Island
+K2D Connecticut
+K2E Delaware
+K2F Maryland
+K2G Georgia
+K2H Massachusetts
+K2I New Jersey
+K2J North Carolina
+K2K New Hampshire
+K2L South Carolina
+K2M Pennsylvania
+
+# Bonus stations
+WM3PEN Philadelphia bonus station
+GB13COL Great Britain bonus station

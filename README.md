@@ -121,8 +121,8 @@ download the archive for your platform:
 - `wsjtx-queue-vX.Y.Z-linux.tar.gz`: contains `wsjtx-queue` and
   `wsjtx-udp-hub`.
 
-Each release archive also includes `README.md`, `LICENSE`, `docs/`, and a
-simple launcher for that platform.
+Each release archive also includes `README.md`, `LICENSE`, `docs/`, `wanted/`,
+and a simple launcher for that platform.
 
 ### Desktop Shortcuts
 
@@ -407,6 +407,18 @@ Use `--wanted FILE` to mark and boost stations you are chasing, such as special
 event stations, Museum Ships Weekend calls, W1AW portable stations, or contest
 multipliers. Wanted stations are marked with `!` and receive a score boost in
 both the caller queue and CQ/QRZ list.
+
+Sample wanted files are included under `wanted/`:
+
+- `wanted/13-colonies.txt`
+- `wanted/w1aw-portable.txt`
+- `wanted/world-cup-2026-ses.txt`
+
+Example:
+
+```sh
+wsjtx-queue --call AK6IM --grid CM87um --view cqs --wanted wanted/13-colonies.txt
+```
 
 Example `wanted.txt`:
 
